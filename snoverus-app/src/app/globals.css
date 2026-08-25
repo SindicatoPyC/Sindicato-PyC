@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  /* Fondo moderno de término medio (Slate elegante con destellos suaves) */
+  .bg-cyber-grid-medium {
+    background-color: #0f172a; /* Slate 900 de término medio */
+    background-image: 
+      radial-gradient(at 10% 20%, rgba(59, 130, 246, 0.12) 0px, transparent 50%),
+      radial-gradient(at 90% 10%, rgba(99, 102, 241, 0.1) 0px, transparent 50%),
+      radial-gradient(at 50% 90%, rgba(14, 165, 233, 0.08) 0px, transparent 50%);
+    background-attachment: fixed;
+  }
+}
