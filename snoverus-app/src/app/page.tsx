@@ -25,7 +25,7 @@ const sindicalSlides = [
 ];
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
+  const [rut, setRut] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -46,8 +46,24 @@ export default function LoginPage() {
 
     try {
       const supabase = createClient();
+
+      // 1. Buscamos el correo asociado al RUT ingresado en la base de datos
+      // (Asumiendo que guardas el RUT en una tabla llamada 'profiles' o 'users')
+      const { data: profileData, error: profileError } = await supabase
+        .from('profiles') // O la tabla donde guardes el RUT de los socios
+        .select('email')
+        .eq('rut', rut)
+        .single();
+
+      if (profileError || !profileData) {
+        throw new Error('El RUT ingresado no se encuentra registrado en el sistema.');
+      }
+
+      const userEmail = profileData.email;
+
+      // 2. Iniciamos sesión en Supabase Auth usando el correo encontrado y la contraseña
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: userEmail,
         password,
       });
 
@@ -59,7 +75,7 @@ export default function LoginPage() {
         router.refresh();
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Correo o contraseña incorrectos. Por favor, verifica tus datos.');
+      setErrorMsg(err.message || 'RUT o contraseña incorrectos. Por favor, verifica tus datos.');
     } finally {
       setLoading(false);
     }
@@ -125,7 +141,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* 📋 PANEL DERECHO: Formulario de LOGIN */}
+      {/* 📋 PANEL DERECHO: Formulario de LOGIN con RUT */}
       <div className="lg:col-span-7 flex items-center justify-center p-6 sm:p-12 relative z-10 bg-slate-100/80 backdrop-blur-sm">
         
         <div className="w-full max-w-lg bg-white backdrop-blur-2xl p-8 sm:p-12 rounded-[2rem] border border-slate-200/90 shadow-[0_20px_50px_rgba(0,0,0,0.08)] relative">
@@ -140,7 +156,7 @@ export default function LoginPage() {
             </h2>
             
             <p className="text-slate-500 text-xs font-semibold uppercase tracking-wider">
-              Ingresa tus datos institucionales para continuar
+              Ingresa tu RUT institucional para continuar
             </p>
           </div>
 
@@ -154,14 +170,14 @@ export default function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-2">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider pl-1">
-                Correo Electrónico
+                RUT del Socio
               </label>
               <input 
-                type="email" 
+                type="text" 
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="tucorreo@sindicatopyc.cl"
+                value={rut}
+                onChange={(e) => setRut(e.target.value)}
+                placeholder="11111111-1"
                 className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-5 py-3.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-rose-900 focus:ring-2 focus:ring-rose-900/20 transition-all font-medium text-sm"
               />
             </div>
@@ -178,7 +194,6 @@ export default function LoginPage() {
                 placeholder="••••••••••••"
                 className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-5 py-3.5 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-rose-900 focus:ring-2 focus:ring-rose-900/20 transition-all font-medium text-sm"
               />
-              {/* 👇 Enlace corregido con barra inicial absoluta */}
               <div className="flex justify-end pt-1">
                 <Link href="/forgot-password" className="text-rose-900 text-xs font-bold hover:underline">
                   ¿Olvidaste tu contraseña?

@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-// 👇 Importante: Ruta relativa para salir de la carpeta register y entrar a lib
 import { createClient } from '../lib/supabase'; 
 
 // 🔄 SLIDES PARA EL CARRUSEL DE REGISTRO
@@ -11,7 +10,7 @@ const sindicalSlides = [
   {
     icon: "🚀",
     title: "Súmate a Nuestra Comunidad",
-    description: "Forma parte del Sindicato PYC. Regístrate con tu correo institucional para acceder a todos los beneficios, asambleas virtuales y transparencia gremial."
+    description: "Forma parte del Sindicato PYC. Regístrate con tu RUT, nombre y correo institucional para acceder a todos los beneficios y asambleas virtuales."
   },
   {
     icon: "🤝",
@@ -26,6 +25,8 @@ const sindicalSlides = [
 ];
 
 export default function RegisterPage() {
+  const [fullName, setFullName] = useState('');
+  const [rut, setRut] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -56,18 +57,35 @@ export default function RegisterPage() {
 
     try {
       const supabase = createClient();
-      // FUNCIÓN DE REGISTRO
-      const { data, error } = await supabase.auth.signUp({
+      
+      // 1. Registrar usuario en Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
       });
 
-      if (error) throw error;
+      if (authError) throw authError;
 
-      if (data.user) {
+      if (authData.user) {
+        // 2. Guardar el RUT, el correo, el nombre y el rol 'socio' en la tabla 'profiles'
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert([
+            { 
+              id: authData.user.id, 
+              rut: rut, 
+              email: email,
+              full_name: fullName,
+              role: 'socio' // 👈 Rol por defecto para cualquier nuevo registro
+            }
+          ]);
+
+        if (profileError) {
+          console.error("Error al guardar perfil:", profileError.message);
+        }
+
         setSuccessMsg('¡Registro exitoso! Redirigiendo al inicio de sesión...');
         setTimeout(() => {
-          // Te devuelve al Login (la ruta principal)
           router.push('/');
         }, 2500);
       }
@@ -138,17 +156,17 @@ export default function RegisterPage() {
         </div>
       </div>
 
-      {/* 📋 PANEL DERECHO: Formulario de Registro (3 campos) */}
+      {/* 📋 PANEL DERECHO: Formulario de Registro con Nombre, RUT y Correo */}
       <div className="lg:col-span-7 flex items-center justify-center p-6 sm:p-12 relative z-10 bg-slate-100/80 backdrop-blur-sm">
         
         <div className="w-full max-w-lg bg-white backdrop-blur-2xl p-8 sm:p-12 rounded-[2rem] border border-slate-200/90 shadow-[0_20px_50px_rgba(0,0,0,0.08)] relative">
           
-          <div className="text-center space-y-3 mb-8">
+          <div className="text-center space-y-2 mb-6">
             <div className="inline-flex items-center gap-2 bg-rose-50 border border-rose-200 px-4 py-1.5 rounded-full text-rose-900 text-xs font-bold tracking-wider uppercase">
               📝 Registro Institucional
             </div>
             
-            <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900">
+            <h2 className="text-3xl font-black tracking-tight text-slate-900">
               Crear Nueva Cuenta
             </h2>
             
@@ -158,21 +176,50 @@ export default function RegisterPage() {
           </div>
 
           {errorMsg && (
-            <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs font-semibold flex items-center gap-3">
+            <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-semibold flex items-center gap-3">
               <span>⚠️</span> 
               <span>{errorMsg}</span>
             </div>
           )}
 
           {successMsg && (
-            <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-700 text-xs font-semibold flex items-center gap-3">
+            <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-700 text-xs font-semibold flex items-center gap-3">
               <span>✅</span> 
               <span>{successMsg}</span>
             </div>
           )}
 
-          <form onSubmit={handleRegister} className="space-y-4">
-            <div className="space-y-1.5">
+          <form onSubmit={handleRegister} className="space-y-3">
+            
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider pl-1">
+                Nombre Completo
+              </label>
+              <input 
+                type="text" 
+                required
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Juan Pérez Soto"
+                className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-5 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-rose-900 focus:ring-2 focus:ring-rose-900/20 transition-all font-medium text-sm"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider pl-1">
+                RUT del Socio
+              </label>
+              <input 
+                type="text" 
+                required
+                value={rut}
+                onChange={(e) => setRut(e.target.value)}
+                placeholder="11111111-1"
+                className="w-full bg-slate-50 border border-slate-300 rounded-2xl px-5 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-rose-900 focus:ring-2 focus:ring-rose-900/20 transition-all font-medium text-sm"
+              />
+            </div>
+
+            <div className="space-y-1">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider pl-1">
                 Correo Electrónico Institucional
               </label>
@@ -186,7 +233,7 @@ export default function RegisterPage() {
               />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider pl-1">
                 Contraseña
               </label>
@@ -200,7 +247,7 @@ export default function RegisterPage() {
               />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider pl-1">
                 Confirmar Contraseña
               </label>
@@ -226,7 +273,7 @@ export default function RegisterPage() {
           </form>
 
           {/* Enlace de regreso al Login (Ruta raíz) */}
-          <div className="mt-6 pt-4 border-t border-slate-100 text-center flex items-center justify-between text-xs font-medium text-slate-500">
+          <div className="mt-4 pt-3 border-t border-slate-100 text-center flex items-center justify-between text-xs font-medium text-slate-500">
             <span>¿Ya tienes una cuenta?</span>
             <Link href="/" className="text-rose-900 font-bold hover:underline">
               Iniciar Sesión aquí

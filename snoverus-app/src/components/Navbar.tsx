@@ -1,11 +1,44 @@
 "use client";
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { createClient } from "../app/lib/supabase"; // 👈 Usamos el alias absoluto para evitar errores de rutas relativas
 import Campanita from "./Campanita"; 
 
 export default function Navbar() {
   const router = useRouter();
+  const [userName, setUserName] = useState("Socio PYC");
+  const [userRole, setUserRole] = useState("Socio Activo");
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      const supabase = createClient();
+      
+      // 1. Obtenemos el usuario autenticado actual
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError || !user) return;
+
+      // 2. Consultamos su perfil en la tabla 'profiles'
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('full_name, role, email')
+        .eq('id', user.id)
+        .single();
+
+      if (!profileError && profile) {
+        // Prioriza el nombre completo, si no existe usa la parte inicial del correo
+        const nameToDisplay = profile.full_name || profile.email?.split('@')[0] || "Socio PYC";
+        setUserName(nameToDisplay);
+        setUserRole(profile.role === 'admin' ? 'Administrador' : 'Socio Activo');
+      } else {
+        // Fallback si no encuentra el perfil pero sí hay sesión
+        setUserName(user.email?.split('@')[0] || "Socio PYC");
+      }
+    };
+
+    fetchUserData();
+  }, []);
 
   const handleLogout = () => {
     document.cookie = 'sb-sindicato-session=; path=/; max-age=0;';
@@ -87,7 +120,7 @@ export default function Navbar() {
             </div>
           </div>
 
-          {/* Lado Derecho: Controles y Perfil */}
+          {/* Lado Derecho: Controles y Perfil Dinámico */}
           <div className="flex items-center justify-end gap-4 sm:gap-6 w-1/4">
             
             <Campanita />
@@ -95,8 +128,8 @@ export default function Navbar() {
             <div className="h-8 w-px bg-slate-700 hidden sm:block"></div>
 
             <div className="hidden sm:flex flex-col items-end">
-              <span className="text-sm font-bold text-white">Alexander M.</span>
-              <span className="text-[10px] text-blue-400 font-extrabold tracking-widest uppercase">Administrador</span>
+              <span className="text-sm font-bold text-white">{userName}</span>
+              <span className="text-[10px] text-blue-400 font-extrabold tracking-widest uppercase">{userRole}</span>
             </div>
             
             <Link href="/dashboard/perfil" className="h-10 w-10 rounded-full bg-slate-800 flex items-center justify-center border border-slate-600 shadow-sm hover:border-blue-500 transition cursor-pointer">
