@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "../app/lib/supabase"; // 👈 Usamos el alias absoluto para evitar errores de rutas relativas
+import { createClient } from "../app/lib/supabase";
 import Campanita from "./Campanita"; 
 
 export default function Navbar() {
@@ -14,12 +14,9 @@ export default function Navbar() {
     const fetchUserData = async () => {
       const supabase = createClient();
       
-      // 1. Obtenemos el usuario autenticado actual
       const { data: { user }, error: authError } = await supabase.auth.getUser();
-      
       if (authError || !user) return;
 
-      // 2. Consultamos su perfil en la tabla 'profiles'
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('full_name, role, email')
@@ -27,12 +24,10 @@ export default function Navbar() {
         .single();
 
       if (!profileError && profile) {
-        // Prioriza el nombre completo, si no existe usa la parte inicial del correo
         const nameToDisplay = profile.full_name || profile.email?.split('@')[0] || "Socio PYC";
         setUserName(nameToDisplay);
         setUserRole(profile.role === 'admin' ? 'Administrador' : 'Socio Activo');
       } else {
-        // Fallback si no encuentra el perfil pero sí hay sesión
         setUserName(user.email?.split('@')[0] || "Socio PYC");
       }
     };
@@ -40,10 +35,21 @@ export default function Navbar() {
     fetchUserData();
   }, []);
 
-  const handleLogout = () => {
+  // 🛡️ Cierre de sesión completo (Servidor + Cookies locales)
+  const handleLogout = async () => {
+    try {
+      const supabase = createClient();
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("Error al cerrar sesión en Supabase:", err);
+    }
+
+    // Borramos las cookies locales
     document.cookie = 'sb-sindicato-session=; path=/; max-age=0;';
     document.cookie = 'sb-sindicato-rol=; path=/; max-age=0;';
+    
     router.push('/');
+    router.refresh();
   };
 
   return (
@@ -75,7 +81,7 @@ export default function Navbar() {
 
             {/* Menú Desplegable Flotante */}
             <div className="relative group h-20 flex items-center">
-              <button className="flex items-center gap-1 text-sm font-bold text-slate-300 group-hover:text-white transition outline-none">
+              <button className="flex items-center gap-1 text-sm font-bold text-slate-300 group-hover:text-white transition outline-none cursor-pointer">
                 Más Módulos
                 <svg className="w-4 h-4 text-slate-400 group-hover:text-white transition-transform duration-300 group-hover:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" /></svg>
               </button>
@@ -118,6 +124,17 @@ export default function Navbar() {
                 </div>
               </div>
             </div>
+
+            {/* BOTÓN EXCLUSIVO PARA ADMINISTRADORES */}
+            {userRole === 'Administrador' && (
+              <Link 
+                href="/dashboard/admin" 
+                className="text-sm font-bold text-white flex items-center gap-2 bg-rose-900 hover:bg-rose-800 px-4 py-1.5 rounded-full transition-colors border border-rose-700 shadow-md ml-2"
+              >
+                ⚙️ Panel Admin
+              </Link>
+            )}
+
           </div>
 
           {/* Lado Derecho: Controles y Perfil Dinámico */}
@@ -138,7 +155,7 @@ export default function Navbar() {
 
             <button 
               onClick={handleLogout}
-              className="text-slate-400 hover:text-red-400 transition ml-2 p-2 rounded-xl hover:bg-slate-800/50"
+              className="text-slate-400 hover:text-red-400 transition ml-2 p-2 rounded-xl hover:bg-slate-800/50 cursor-pointer"
               title="Cerrar Sesión"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -147,7 +164,7 @@ export default function Navbar() {
             </button>
 
             {/* Menú Hamburguesa (Móviles) */}
-            <button className="lg:hidden text-slate-400 hover:text-white ml-2">
+            <button className="lg:hidden text-slate-400 hover:text-white ml-2 cursor-pointer">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
               </svg>

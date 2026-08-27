@@ -1,16 +1,24 @@
-import Navbar from '../../components/Navbar';
+'use client';
+
+import React from 'react';
+import { usePathname } from 'next/navigation';
+import Navbar from '../../components/Navbar'; 
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const isAdminArea = pathname?.startsWith('/dashboard/admin');
+
   return (
-    <div className="min-h-screen flex flex-col bg-slate-100/70">
-      <Navbar />
-      <div className="flex-grow">
+    <div className="flex flex-col min-h-screen bg-slate-950 text-slate-100">
+      {!isAdminArea && <Navbar />}
+      
+      <main className="flex-grow">
         {children}
-      </div>
+      </main>
     </div>
   );
 }

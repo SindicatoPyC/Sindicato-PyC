@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from './lib/supabase';
 
-// 🔄 SLIDES PARA EL CARRUSEL DEL LOGIN
 const sindicalSlides = [
   {
     icon: "✊",
@@ -44,38 +43,51 @@ export default function LoginPage() {
     setLoading(true);
     setErrorMsg('');
 
+    const cleanRut = rut.replace(/[^0-9kK]/g, '').toUpperCase();
+    
     try {
       const supabase = createClient();
 
-      // 1. Buscamos el correo asociado al RUT ingresado en la base de datos
-      // (Asumiendo que guardas el RUT en una tabla llamada 'profiles' o 'users')
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles') // O la tabla donde guardes el RUT de los socios
-        .select('email')
-        .eq('rut', rut)
-        .single();
+      const { data: realEmail, error: rpcError } = await supabase.rpc('get_email_por_rut', { 
+        p_rut: cleanRut 
+      });
 
-      if (profileError || !profileData) {
-        throw new Error('El RUT ingresado no se encuentra registrado en el sistema.');
+      if (rpcError || !realEmail) {
+        throw new Error('No encontramos una cuenta asociada a este RUT.');
       }
 
-      const userEmail = profileData.email;
-
-      // 2. Iniciamos sesión en Supabase Auth usando el correo encontrado y la contraseña
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: userEmail,
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: realEmail,
         password,
       });
 
-      if (error) throw error;
+      if (authError) throw new Error('RUT o contraseña incorrectos.');
 
-      if (data.session) {
-        document.cookie = `sb-sindicato-session=${data.user?.email}; path=/; max-age=86400`;
-        router.push('/dashboard');
+      if (authData.session) {
+        document.cookie = `sb-sindicato-session=${authData.user.email}; path=/; max-age=86400`;
+
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', authData.user.id)
+          .single();
+
+        if (profileError) {
+          throw new Error('Error al obtener los permisos del usuario.');
+        }
+
+        document.cookie = `sb-sindicato-rol=${profileData.role}; path=/; max-age=86400`;
+
+        if (profileData.role === 'admin') {
+          router.push('/dashboard/admin');
+        } else {
+          router.push('/dashboard');
+        }
+        
         router.refresh();
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'RUT o contraseña incorrectos. Por favor, verifica tus datos.');
+      setErrorMsg(err.message || 'Error de conexión. Por favor, verifica tus datos.');
     } finally {
       setLoading(false);
     }
@@ -83,14 +95,10 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen w-full bg-slate-100 font-sans text-slate-800 grid grid-cols-1 lg:grid-cols-12 overflow-hidden relative selection:bg-rose-900 selection:text-white">
-      
-      {/* 🍷 PANEL IZQUIERDO DE ALTO CONTRASTE */}
       <div className="hidden lg:flex lg:col-span-5 flex-col justify-between p-12 xl:p-16 relative z-10 bg-gradient-to-br from-rose-950 via-rose-900 to-slate-950 text-white shadow-2xl overflow-hidden">
-        
         <div className="absolute top-0 right-0 w-96 h-96 bg-rose-600/10 blur-[120px] rounded-full pointer-events-none"></div>
         <div className="absolute bottom-0 left-0 w-96 h-96 bg-black/30 blur-[100px] rounded-full pointer-events-none"></div>
 
-        {/* LOGOTIPO OFICIAL */}
         <div className="relative z-10 flex items-center gap-4">
           <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-md flex items-center justify-center text-white text-2xl font-black shadow-lg">
             PYC
@@ -105,7 +113,6 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Carrusel Dinámico */}
         <div className="space-y-6 my-auto relative z-10">
           <div className="relative p-8 rounded-3xl bg-white/10 border border-white/15 backdrop-blur-xl shadow-2xl space-y-4 transition-all duration-700">
             <div className="w-12 h-12 rounded-2xl bg-white/15 border border-white/20 flex items-center justify-center text-2xl text-white">
@@ -141,11 +148,8 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* 📋 PANEL DERECHO: Formulario de LOGIN con RUT */}
       <div className="lg:col-span-7 flex items-center justify-center p-6 sm:p-12 relative z-10 bg-slate-100/80 backdrop-blur-sm">
-        
         <div className="w-full max-w-lg bg-white backdrop-blur-2xl p-8 sm:p-12 rounded-[2rem] border border-slate-200/90 shadow-[0_20px_50px_rgba(0,0,0,0.08)] relative">
-          
           <div className="text-center space-y-3 mb-8">
             <div className="inline-flex items-center gap-2 bg-rose-50 border border-rose-200 px-4 py-1.5 rounded-full text-rose-900 text-xs font-bold tracking-wider uppercase">
               ✨ Portal de Socios
@@ -212,17 +216,14 @@ export default function LoginPage() {
             </div>
           </form>
 
-          {/* Enlace para ir al registro */}
           <div className="mt-8 pt-6 border-t border-slate-100 text-center flex items-center justify-between text-xs font-medium text-slate-500">
             <span>¿Aún no estás registrado?</span>
             <Link href="/register" className="text-rose-900 font-bold hover:underline">
               Crear cuenta de socio
             </Link>
           </div>
-
         </div>
       </div>
-
     </div>
   );
 }

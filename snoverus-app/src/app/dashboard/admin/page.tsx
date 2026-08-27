@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '../lib/supabase';
+import { createClient } from '../../lib/supabase';
 
 export default function AdminPanel() {
   const router = useRouter();
@@ -39,12 +39,23 @@ export default function AdminPanel() {
   const fetchEnterpriseData = async () => {
     try {
       const supabase = createClient();
-      const { data: usersData } = await supabase.from('usuarios').select('*');
-      if (Array.isArray(usersData)) setUsuarios(usersData);
+      
+      // 1. Consultamos la tabla 'profiles' asegurando traer la columna 'role'
+      const { data: usersData, error: userError } = await supabase
+        .from('profiles')
+        .select('id, rut, email, full_name, role, created_at')
+        .order('created_at', { ascending: false });
+        
+      if (!userError && Array.isArray(usersData)) {
+        setUsuarios(usersData);
+      }
+      
       const { data: ticketsData } = await supabase.from('tickets_soporte').select('*').order('created_at', { ascending: false });
       if (Array.isArray(ticketsData)) setTickets(ticketsData);
+      
       const { data: votosData } = await supabase.from('votos_registrados').select('*');
       if (Array.isArray(votosData)) setVotos(votosData);
+      
       const { data: citasData } = await supabase.from('agenda_legal').select('*').order('fecha_reserva', { ascending: false });
       if (Array.isArray(citasData)) setCitas(citasData);
     } catch (err) {
@@ -99,7 +110,7 @@ export default function AdminPanel() {
       const fileExt = actaArchivo.name.split('.').pop();
       const fileName = `${Date.now()}_acta.${fileExt}`;
       
-      const { data: uploadData, error: uploadError } = await supabase.storage
+      const { error: uploadError } = await supabase.storage
         .from('actas')
         .upload(fileName, actaArchivo);
 
@@ -131,15 +142,21 @@ export default function AdminPanel() {
     }
   };
 
+  // Cambio de roles dinámico y seguro conectado a Supabase
   const handleCambiarRol = async (user: any) => {
-    const nuevoRol = user.rol === 'Administrador' ? 'Usuario' : 'Administrador';
+    const nuevoRol = user.role === 'admin' ? 'socio' : 'admin';
     try {
       const supabase = createClient();
-      let query = supabase.from('usuarios').update({ rol: nuevoRol });
-      if (user.id) query = query.eq('id', user.id); else query = query.eq('rut', user.rut);
-      const { error } = await query;
-      if (!error) setUsuarios(usuarios.map(u => (u.id === user.id || u.rut === user.rut) ? { ...u, rol: nuevoRol } : u));
-    } catch (err: any) {}
+      const { error } = await supabase.from('profiles').update({ role: nuevoRol }).eq('id', user.id);
+      
+      if (!error) {
+        setUsuarios(usuarios.map(u => (u.id === user.id) ? { ...u, role: nuevoRol } : u));
+      } else {
+        alert('Error actualizando el rol: Verifica las políticas RLS en Supabase.');
+      }
+    } catch (err: any) {
+      console.error(err);
+    }
   };
 
   const handleActualizarTicket = async (id: number, nuevoEstado: string) => {
@@ -392,13 +409,13 @@ export default function AdminPanel() {
                   <tr key={user.id || user.rut || idx} className="border-b border-slate-50 hover:bg-slate-50/50 transition">
                     <td className="p-4 font-bold text-slate-900 text-sm">{user.rut}</td>
                     <td className="p-4">
-                      <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border ${user.rol === 'Administrador' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                        {user.rol || 'Usuario'}
+                      <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border ${user.role === 'admin' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
+                        {user.role === 'admin' ? 'Administrador' : 'Socio'}
                       </span>
                     </td>
                     <td className="p-4 text-right">
                       <button onClick={() => handleCambiarRol(user)} className="text-xs font-bold bg-slate-900 hover:bg-blue-600 text-white px-4 py-2 rounded-xl transition shadow-sm">
-                        Cambiar Rol
+                        Cambiar a {user.role === 'admin' ? 'Socio' : 'Admin'}
                       </button>
                     </td>
                   </tr>

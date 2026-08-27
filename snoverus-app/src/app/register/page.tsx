@@ -55,33 +55,37 @@ export default function RegisterPage() {
       return;
     }
 
+    // 1. Limpieza estricta del RUT
+    const cleanRut = rut.replace(/[^0-9kK]/g, '').toUpperCase();
+
     try {
       const supabase = createClient();
       
-      // 1. Registrar usuario en Supabase Auth
+      // 2. Registrar usuario en la bóveda de Supabase Auth con el correo real
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
+        email: email,
         password,
       });
 
       if (authError) throw authError;
 
       if (authData.user) {
-        // 2. Guardar el RUT, el correo, el nombre y el rol 'socio' en la tabla 'profiles'
+        // 3. Guardar los datos reales del socio en la tabla pública 'profiles'
         const { error: profileError } = await supabase
           .from('profiles')
           .insert([
             { 
               id: authData.user.id, 
-              rut: rut, 
-              email: email,
+              rut: cleanRut,            // Guardamos el RUT limpio
+              email: email,            // Guardamos el correo real para contactarlo
               full_name: fullName,
-              role: 'socio' // 👈 Rol por defecto para cualquier nuevo registro
+              role: 'socio'            // Rol por defecto
             }
           ]);
 
         if (profileError) {
           console.error("Error al guardar perfil:", profileError.message);
+          throw new Error('Error al registrar los datos del socio en la base de datos.');
         }
 
         setSuccessMsg('¡Registro exitoso! Redirigiendo al inicio de sesión...');

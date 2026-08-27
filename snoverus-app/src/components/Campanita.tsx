@@ -10,11 +10,18 @@ export default function Campanita() {
   useEffect(() => {
     cargarNotificaciones();
 
+    // 🛡️ Corrección de sintaxis en el generador de string aleatorio
+    const channelName = `notificaciones_${Math.random().toString(36).substring(2, 9)}`;
+    
     const channel = supabase
-      .channel('public:notificaciones_sindicato')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notificaciones_sindicato' }, (payload) => {
-        setNotificaciones((prev) => [payload.new, ...prev]);
-      })
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notificaciones_sindicato' },
+        (payload) => {
+          setNotificaciones((prev) => [payload.new, ...prev]);
+        }
+      )
       .subscribe();
 
     return () => {
@@ -57,7 +64,7 @@ export default function Campanita() {
     <div className="relative">
       <button 
         onClick={marcarComoLeidas}
-        className="relative p-2 text-slate-300 hover:text-white transition rounded-xl hover:bg-slate-800/50 focus:outline-none"
+        className="relative p-2 text-slate-300 hover:text-white transition rounded-xl hover:bg-slate-800/50 focus:outline-none cursor-pointer"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />

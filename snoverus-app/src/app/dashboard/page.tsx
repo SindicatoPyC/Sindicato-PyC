@@ -86,7 +86,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-cyber-grid-medium font-sans text-slate-100 pb-20 relative">
+    <div className="bg-slate-950 font-sans text-slate-100 pb-20 relative w-full">
 
       {/* Contenedor principal con pt-6 para acoplarse perfectamente al Navbar */}
       <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-6 space-y-16 relative z-10">

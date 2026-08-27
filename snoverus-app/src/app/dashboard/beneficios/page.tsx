@@ -1,11 +1,7 @@
 "use client";
-import { useState, useEffect } from "react";
-import { createClient } from "@supabase/supabase-js";
+import React, { useState, useEffect } from "react";
+import { createClient } from "../../lib/supabase"; // Instancia limpia de Supabase
 import emailjs from "@emailjs/browser";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 interface Beneficio {
   id: number | string;
@@ -18,6 +14,8 @@ interface Beneficio {
 }
 
 export default function BeneficiosPage() {
+  const supabase = createClient(); 
+
   const [beneficios, setBeneficios] = useState<Beneficio[]>([]);
   const [cargando, setCargando] = useState(true);
   const [filtro, setFiltro] = useState("Todos");
@@ -127,14 +125,26 @@ export default function BeneficiosPage() {
     }
   };
 
-  const abrirUsoBeneficio = (beneficio: Beneficio) => {
+  // Función actualizada: Obtiene automáticamente el correo del usuario que inició sesión
+  const abrirUsoBeneficio = async (beneficio: Beneficio) => {
     setBeneficioSeleccionado(beneficio);
-    setCorreoSocio("");
     setExitoEnvio(false);
     setModalUsoAbierto(true);
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user && user.email) {
+        setCorreoSocio(user.email);
+      } else {
+        setCorreoSocio(""); 
+      }
+    } catch (error) {
+      console.error("Error obteniendo usuario:", error);
+      setCorreoSocio("");
+    }
   };
 
-  // Enviar Correo de forma automática usando EmailJS corregido
+  // Enviar Correo de forma automática usando EmailJS
   const enviarCorreoBeneficio = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!beneficioSeleccionado) return;
@@ -146,7 +156,10 @@ export default function BeneficiosPage() {
       const templateID = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID || "";
       const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY || "";
 
-      // Parámetros completos mapeando los nombres estándar que acepta EmailJS
+      if (!serviceID || !templateID || !publicKey) {
+        throw new Error("Faltan las variables de entorno de EmailJS");
+      }
+
       const templateParams = {
         to_email: correoSocio,
         email: correoSocio,
@@ -169,10 +182,10 @@ export default function BeneficiosPage() {
         setExitoEnvio(false);
       }, 3000);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error al enviar el correo automático:", error);
       setEnviandoCorreo(false);
-      alert("Hubo un error al despachar el correo. Revisa tus credenciales en el archivo .env.local");
+      alert(`Hubo un error al despachar el correo: ${error.message || "Revisa tus credenciales en el archivo .env.local"}`);
     }
   };
 
@@ -209,7 +222,7 @@ export default function BeneficiosPage() {
               placeholder="Buscar por nombre o detalle..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600/50 font-medium transition"
+              className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600/50 font-medium transition"
             />
           </div>
 
@@ -331,7 +344,7 @@ export default function BeneficiosPage() {
                     value={correoSocio}
                     onChange={(e) => setCorreoSocio(e.target.value)}
                     placeholder="socio@sindicatopyc.cl"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50"
                   />
                   <p className="text-[11px] text-slate-400 mt-1">Recibirás el comprobante oficial en tu bandeja de entrada.</p>
                 </div>
@@ -380,12 +393,12 @@ export default function BeneficiosPage() {
             <form onSubmit={guardarBeneficio} className="space-y-4">
               <div>
                 <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Título del Convenio</label>
-                <input type="text" required value={beneficioActual.titulo} onChange={(e) => setBeneficioActual({...beneficioActual, titulo: e.target.value})} placeholder="Ej: Clínica Dental" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50" />
+                <input type="text" required value={beneficioActual.titulo} onChange={(e) => setBeneficioActual({...beneficioActual, titulo: e.target.value})} placeholder="Ej: Clínica Dental" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Categoría</label>
-                  <select value={beneficioActual.categoria} onChange={(e) => setBeneficioActual({...beneficioActual, categoria: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50">
+                  <select value={beneficioActual.categoria} onChange={(e) => setBeneficioActual({...beneficioActual, categoria: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50">
                     <option value="Salud">Salud</option>
                     <option value="Educación">Educación</option>
                     <option value="Recreación">Recreación</option>
@@ -394,21 +407,21 @@ export default function BeneficiosPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Ubicación</label>
-                  <input type="text" required value={beneficioActual.ubicacion} onChange={(e) => setBeneficioActual({...beneficioActual, ubicacion: e.target.value})} placeholder="Ej: RM" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50" />
+                  <input type="text" required value={beneficioActual.ubicacion} onChange={(e) => setBeneficioActual({...beneficioActual, ubicacion: e.target.value})} placeholder="Ej: RM" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50" />
                 </div>
               </div>
               <div>
                 <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Descripción</label>
-                <textarea required rows={3} value={beneficioActual.descripcion} onChange={(e) => setBeneficioActual({...beneficioActual, descripcion: e.target.value})} placeholder="Detalles..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50 resize-none" />
+                <textarea required rows={3} value={beneficioActual.descripcion} onChange={(e) => setBeneficioActual({...beneficioActual, descripcion: e.target.value})} placeholder="Detalles..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50 resize-none" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Asesor a Cargo</label>
-                  <input type="text" required value={beneficioActual.asesor} onChange={(e) => setBeneficioActual({...beneficioActual, asesor: e.target.value})} placeholder="Nombre" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50" />
+                  <input type="text" required value={beneficioActual.asesor} onChange={(e) => setBeneficioActual({...beneficioActual, asesor: e.target.value})} placeholder="Nombre" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50" />
                 </div>
                 <div>
                   <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Icono (Emoji)</label>
-                  <input type="text" required value={beneficioActual.icono} onChange={(e) => setBeneficioActual({...beneficioActual, icono: e.target.value})} placeholder="💡" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50 text-center text-lg" />
+                  <input type="text" required value={beneficioActual.icono} onChange={(e) => setBeneficioActual({...beneficioActual, icono: e.target.value})} placeholder="💡" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50 text-center text-lg" />
                 </div>
               </div>
               <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
