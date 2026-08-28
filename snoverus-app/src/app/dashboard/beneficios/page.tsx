@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { createClient } from "../../lib/supabase"; // Instancia limpia de Supabase
+import { createClient } from "../../lib/supabase"; 
 import emailjs from "@emailjs/browser";
 
 interface Beneficio {
@@ -20,18 +20,13 @@ export default function BeneficiosPage() {
   const [cargando, setCargando] = useState(true);
   const [filtro, setFiltro] = useState("Todos");
   const [busqueda, setBusqueda] = useState("");
+  const [esAdmin, setEsAdmin] = useState(false); // Estado para controlar permisos
 
   // Estados para el Modal CRUD
   const [modalAbierto, setModalAbierto] = useState(false);
   const [modoEdicion, setModoEdicion] = useState(false);
   const [beneficioActual, setBeneficioActual] = useState<Beneficio>({
-    id: "",
-    titulo: "",
-    categoria: "Salud",
-    ubicacion: "",
-    descripcion: "",
-    asesor: "",
-    icono: "✨"
+    id: "", titulo: "", categoria: "Salud", ubicacion: "", descripcion: "", asesor: "", icono: "✨"
   });
 
   // Estados para el Modal de Uso de Beneficio y EmailJS
@@ -42,8 +37,30 @@ export default function BeneficiosPage() {
   const [exitoEnvio, setExitoEnvio] = useState(false);
 
   useEffect(() => {
+    verificarRol();
     cargarBeneficios();
   }, []);
+
+  // Función para verificar si el usuario es administrador
+  const verificarRol = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        // Buscamos el perfil del usuario en la base de datos
+        const { data: perfil } = await supabase
+          .from("profiles") // Asegúrate de que el nombre de tu tabla sea 'profiles'
+          .select("rol")
+          .eq("id", user.id)
+          .single();
+        
+        if (perfil && perfil.rol === "admin") {
+          setEsAdmin(true);
+        }
+      }
+    } catch (error) {
+      console.error("Error al verificar rol:", error);
+    }
+  };
 
   const cargarBeneficios = async () => {
     setCargando(true);
@@ -78,6 +95,8 @@ export default function BeneficiosPage() {
 
   const guardarBeneficio = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!esAdmin) return; // Doble seguridad
+
     try {
       if (modoEdicion) {
         const { error } = await supabase
@@ -114,6 +133,8 @@ export default function BeneficiosPage() {
   };
 
   const eliminarBeneficio = async (id: number | string) => {
+    if (!esAdmin) return; // Doble seguridad
+
     if (confirm("¿Estás seguro de eliminar este convenio institucional?")) {
       try {
         const { error } = await supabase.from("beneficios").delete().eq("id", id);
@@ -125,7 +146,6 @@ export default function BeneficiosPage() {
     }
   };
 
-  // Función actualizada: Obtiene automáticamente el correo del usuario que inició sesión
   const abrirUsoBeneficio = async (beneficio: Beneficio) => {
     setBeneficioSeleccionado(beneficio);
     setExitoEnvio(false);
@@ -144,7 +164,6 @@ export default function BeneficiosPage() {
     }
   };
 
-  // Enviar Correo de forma automática usando EmailJS
   const enviarCorreoBeneficio = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!beneficioSeleccionado) return;
@@ -205,12 +224,15 @@ export default function BeneficiosPage() {
             </p>
           </div>
           
-          <button 
-            onClick={abrirModalCrear}
-            className="bg-blue-600 hover:bg-blue-500 text-white font-extrabold px-6 py-3.5 rounded-2xl shadow-lg shadow-blue-600/30 transition-all flex items-center gap-2 text-sm whitespace-nowrap"
-          >
-            <span>✨ Nuevo Convenio</span>
-          </button>
+          {/* Se oculta el botón si no es admin */}
+          {esAdmin && (
+            <button 
+              onClick={abrirModalCrear}
+              className="bg-blue-600 hover:bg-blue-500 text-white font-extrabold px-6 py-3.5 rounded-2xl shadow-lg shadow-blue-600/30 transition-all flex items-center gap-2 text-sm whitespace-nowrap"
+            >
+              <span>✨ Nuevo Convenio</span>
+            </button>
+          )}
         </div>
 
         {/* Buscador y Filtros */}
@@ -259,11 +281,13 @@ export default function BeneficiosPage() {
               beneficiosFiltrados.map((b) => (
                 <div key={b.id} className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/40 border border-slate-200/80 flex flex-col justify-between relative group hover:border-blue-300 transition-all">
                   
-                  {/* Botones Admin */}
-                  <div className="absolute top-4 right-4 flex items-center gap-1 bg-slate-100/90 backdrop-blur p-1 rounded-xl border border-slate-200 opacity-90 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onClick={() => abrirModalEditar(b)} title="Editar" className="p-2 hover:bg-white text-slate-600 hover:text-blue-600 rounded-lg text-xs font-bold transition">✏️</button>
-                    <button onClick={() => eliminarBeneficio(b.id)} title="Eliminar" className="p-2 hover:bg-white text-slate-600 hover:text-red-600 rounded-lg text-xs font-bold transition">🗑️</button>
-                  </div>
+                  {/* Se ocultan los botones de editar/eliminar si no es admin */}
+                  {esAdmin && (
+                    <div className="absolute top-4 right-4 flex items-center gap-1 bg-slate-100/90 backdrop-blur p-1 rounded-xl border border-slate-200 opacity-90 md:opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => abrirModalEditar(b)} title="Editar" className="p-2 hover:bg-white text-slate-600 hover:text-blue-600 rounded-lg text-xs font-bold transition">✏️</button>
+                      <button onClick={() => eliminarBeneficio(b.id)} title="Eliminar" className="p-2 hover:bg-white text-slate-600 hover:text-red-600 rounded-lg text-xs font-bold transition">🗑️</button>
+                    </div>
+                  )}
 
                   <div>
                     <div className="flex justify-between items-start mb-4 pr-16">
@@ -380,7 +404,7 @@ export default function BeneficiosPage() {
       )}
 
       {/* MODAL CREAR / EDITAR */}
-      {modalAbierto && (
+      {modalAbierto && esAdmin && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
             <div className="flex justify-between items-center mb-6">
