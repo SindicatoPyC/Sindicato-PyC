@@ -2,9 +2,12 @@
 
 import React, { useEffect, useState } from 'react';
 import { createClient } from '../../lib/supabase';
+import { useRouter } from 'next/navigation';
 
 export default function CredencialPage() {
   const [isMounted, setIsMounted] = useState(false);
+  const router = useRouter();
+  const [eliminando, setEliminando] = useState(false);
 
   // Datos del socio
   const [socio, setSocio] = useState({
@@ -53,6 +56,48 @@ export default function CredencialPage() {
     fetchSocioData();
   }, [isMounted]);
 
+  const eliminarCuenta = async () => {
+    const confirmacion = window.confirm(
+      "⚠️ ¿Estás totalmente seguro de que deseas eliminar tu cuenta del sindicato? Esta acción borrará tus datos y no se puede deshacer."
+    );
+
+    if (!confirmacion) return;
+
+    setEliminando(true);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (user) {
+        // 1. Borrar el registro de la tabla pública 'usuarios'
+        if (socio.rut) {
+          await supabase.from('usuarios').delete().eq('rut', socio.rut);
+        }
+
+        // 2. Borrar el registro de la tabla 'profiles'
+        await supabase.from('profiles').delete().eq('id', user.id);
+
+        // 3. Ejecutar la función RPC para destruir la cuenta de Auth
+        const { error: rpcError } = await supabase.rpc('delete_my_account');
+        if (rpcError) {
+          console.error("Error al borrar cuenta auth:", rpcError);
+          throw new Error("No se pudo eliminar la credencial de acceso.");
+        }
+      }
+
+      // 4. Cerrar sesión y limpiar cookies locales
+      await supabase.auth.signOut();
+      document.cookie = "sb-sindicato-session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+
+      // 5. Expulsar a la página principal
+      router.push("/");
+    } catch (error) {
+      console.error("Error al eliminar la cuenta:", error);
+      alert("Hubo un problema al procesar la solicitud de eliminación. Verifica haber creado la función RPC en Supabase.");
+      setEliminando(false);
+    }
+  };
+
   const qrUrl = socio.rut 
     ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=SindicatoSnoverus_Validacion_${socio.rut}`
     : 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=Cargando...';
@@ -60,12 +105,12 @@ export default function CredencialPage() {
   if (!isMounted) return null;
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-12 flex flex-col">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20 flex flex-col items-center">
       
       {/* Área de la Credencial Centrada */}
-      <main className="flex-grow flex items-center justify-center p-4 mt-8">
+      <main className="w-full flex flex-col items-center justify-center p-4 mt-8 max-w-sm">
         
-        <div className="w-full max-w-sm bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 relative transform transition-transform hover:scale-[1.02] duration-300">
+        <div className="w-full bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 relative transform transition-transform hover:scale-[1.02] duration-300">
           
           {/* Header Credencial (Diseño Tarjeta de Identidad) */}
           <div className="bg-gradient-to-r from-blue-700 to-indigo-900 p-6 flex justify-between items-center relative overflow-hidden h-32">
@@ -126,6 +171,30 @@ export default function CredencialPage() {
               <span className="font-extrabold uppercase tracking-widest text-[11px]">Afiliación al Día</span>
             </div>
             
+          </div>
+        </div>
+
+        {/* ZONA DE PELIGRO: Eliminar Cuenta */}
+        <div className="mt-10 w-full">
+          <div className="bg-red-50/80 border border-red-200 rounded-3xl p-6 text-center shadow-sm">
+            <h4 className="text-sm font-black text-red-800 mb-2">Zona de Peligro</h4>
+            <p className="text-xs text-red-600/80 font-medium mb-5 leading-relaxed">
+              Al eliminar tu cuenta perderás el acceso al portal y a todos tus beneficios sindicales.
+            </p>
+            <button
+              onClick={eliminarCuenta}
+              disabled={eliminando}
+              className="w-full bg-red-600 hover:bg-red-700 text-white font-black py-3.5 rounded-xl text-sm transition-all shadow-lg shadow-red-600/20 disabled:opacity-50 flex justify-center items-center gap-2"
+            >
+              {eliminando ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Eliminando datos...
+                </>
+              ) : (
+                "🗑️ Eliminar mi cuenta"
+              )}
+            </button>
           </div>
         </div>
 
