@@ -1,462 +1,368 @@
-"use client";
-import React, { useState, useEffect } from "react";
-import { createClient } from "../../lib/supabase"; 
-import emailjs from "@emailjs/browser";
+'use client'
 
-interface Beneficio {
-  id: number | string;
-  titulo: string;
-  categoria: string;
-  ubicacion: string;
-  descripcion: string;
-  asesor: string;
-  icono: string;
-}
+import React, { useState, useEffect } from 'react';
+import { createClient } from '../../lib/supabase';
+import emailjs from '@emailjs/browser';
+import Link from 'next/link';
 
-export default function BeneficiosPage() {
-  const supabase = createClient(); 
+// Datos de prueba premium (Fallback)
+const conveniosIniciales = [
+  { id: 1, titulo: 'Clínica Dental Sonrisas', descripcion: 'Atención dental con copago cero en tapaduras y 40% de descuento en ortodoncia para cargas familiares registradas.', categoria: 'Salud', descuento: 'Hasta 40%', imagen_url: '' },
+  { id: 2, titulo: 'Farmacias Cruz Verde', descripcion: 'Descuento exclusivo todos los lunes y jueves en medicamentos recetados y genéricos presentando tu RUT sindical.', categoria: 'Salud', descuento: '20% OFF', imagen_url: '' },
+  { id: 3, titulo: 'Cinepolis - Entradas', descripcion: 'Entradas 2D a precio preferencial de lunes a domingo. Máximo 4 entradas mensuales por socio activo.', categoria: 'Recreación', descuento: 'Ticket a $3.500', imagen_url: '' }
+];
 
-  const [beneficios, setBeneficios] = useState<Beneficio[]>([]);
-  const [cargando, setCargando] = useState(true);
-  const [filtro, setFiltro] = useState("Todos");
-  const [busqueda, setBusqueda] = useState("");
-  const [esAdmin, setEsAdmin] = useState(false); // Estado para controlar permisos
+export default function BeneficiosSmartPage() {
+  const [beneficios, setBeneficios] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filtroActivo, setFiltroActivo] = useState('Todos');
+  
+  // 🛡️ Control de Roles
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [socioInfo, setSocioInfo] = useState({ rut: '---', nombre: 'Socio Activo' });
+  const [procesandoUso, setProcesandoUso] = useState<number | null>(null);
+  
+  // Estados para el Modal (Admin)
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [currentId, setCurrentId] = useState<number | null>(null);
+  const [guardando, setGuardando] = useState(false);
 
-  // Estados para el Modal CRUD
-  const [modalAbierto, setModalAbierto] = useState(false);
-  const [modoEdicion, setModoEdicion] = useState(false);
-  const [beneficioActual, setBeneficioActual] = useState<Beneficio>({
-    id: "", titulo: "", categoria: "Salud", ubicacion: "", descripcion: "", asesor: "", icono: "✨"
-  });
+  // Campos del Formulario
+  const [titulo, setTitulo] = useState('');
+  const [descripcion, setDescripcion] = useState('');
+  const [categoria, setCategoria] = useState('Salud');
+  const [descuento, setDescuento] = useState('');
+  const [imagenArchivo, setImagenArchivo] = useState<File | null>(null);
+  const [imagenUrlActual, setImagenUrlActual] = useState('');
 
-  // Estados para el Modal de Uso de Beneficio y EmailJS
-  const [modalUsoAbierto, setModalUsoAbierto] = useState(false);
-  const [beneficioSeleccionado, setBeneficioSeleccionado] = useState<Beneficio | null>(null);
-  const [correoSocio, setCorreoSocio] = useState("");
-  const [enviandoCorreo, setEnviandoCorreo] = useState(false);
-  const [exitoEnvio, setExitoEnvio] = useState(false);
+  const categoriasFiltro = ['Todos', 'Salud', 'Recreación', 'Deporte', 'Educación', 'Hogar', 'Otros'];
+  const categoriasForm = ['Salud', 'Recreación', 'Deporte', 'Educación', 'Hogar', 'Otros'];
 
   useEffect(() => {
-    verificarRol();
-    cargarBeneficios();
+    // 1. Identificar al usuario (Socio o Admin)
+    const cookies = document.cookie.split(';');
+    const rolCookie = cookies.find(c => c.trim().startsWith('sb-sindicato-rol='));
+    const sessionCookie = cookies.find(c => c.trim().startsWith('sb-sindicato-session='));
+    
+    if (rolCookie) {
+      const rol = rolCookie.split('=')[1].toLowerCase();
+      if (['admin', 'administrador', 'directiva'].includes(rol)) {
+        setIsAdmin(true);
+      }
+    }
+
+    if (sessionCookie) {
+      setSocioInfo(prev => ({ ...prev, rut: sessionCookie.split('=')[1] }));
+    }
+
+    fetchBeneficios();
   }, []);
 
-  // Función para verificar si el usuario es administrador
-  const verificarRol = async () => {
+  const fetchBeneficios = async () => {
+    setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        // Buscamos el perfil del usuario en la base de datos
-        const { data: perfil } = await supabase
-          .from("profiles") // Asegúrate de que el nombre de tu tabla sea 'profiles'
-          .select("rol")
-          .eq("id", user.id)
-          .single();
-        
-        if (perfil && perfil.rol === "admin") {
-          setEsAdmin(true);
-        }
-      }
-    } catch (error) {
-      console.error("Error al verificar rol:", error);
-    }
-  };
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('beneficios')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-  const cargarBeneficios = async () => {
-    setCargando(true);
-    try {
-      const { data, error } = await supabase.from("beneficios").select("*").order("id", { ascending: false });
       if (error) throw error;
-      if (data) setBeneficios(data);
-    } catch (error) {
-      console.error("Error al cargar beneficios:", error);
+      if (data && data.length > 0) setBeneficios(data);
+      else setBeneficios(conveniosIniciales);
+    } catch (err) {
+      setBeneficios(conveniosIniciales);
     } finally {
-      setCargando(false);
+      setLoading(false);
     }
   };
 
-  const beneficiosFiltrados = beneficios.filter(b => {
-    const coincideFiltro = filtro === "Todos" || b.categoria?.toLowerCase() === filtro.toLowerCase();
-    const coincideBusqueda = b.titulo?.toLowerCase().includes(busqueda.toLowerCase()) || b.descripcion?.toLowerCase().includes(busqueda.toLowerCase());
-    return coincideFiltro && coincideBusqueda;
-  });
+  const beneficiosFiltrados = filtroActivo === 'Todos' 
+    ? beneficios 
+    : beneficios.filter(b => b.categoria === filtroActivo || b.categoria_nombre === filtroActivo);
 
-  const abrirModalCrear = () => {
-    setModoEdicion(false);
-    setBeneficioActual({ id: "", titulo: "", categoria: "Salud", ubicacion: "", descripcion: "", asesor: "", icono: "💡" });
-    setModalAbierto(true);
-  };
+  // === FUNCIÓN DE SOCIO: USAR BENEFICIO CON EMAILJS ===
+  const handleUsarBeneficio = async (beneficio: any) => {
+    const correoDestino = prompt(
+      `🎟️ ¿Deseas reclamar y utilizar el beneficio "${beneficio.titulo}"?\n\nConfirma tu correo electrónico para recibir el comprobante:`,
+      'contacto@sindicatopyc.cl'
+    );
 
-  const abrirModalEditar = (beneficio: Beneficio) => {
-    setModoEdicion(true);
-    setBeneficioActual(beneficio);
-    setModalAbierto(true);
-  };
+    if (!correoDestino || !correoDestino.trim()) return;
 
-  const guardarBeneficio = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!esAdmin) return; // Doble seguridad
+    setProcesandoUso(beneficio.id);
 
     try {
-      if (modoEdicion) {
-        const { error } = await supabase
-          .from("beneficios")
-          .update({
-            titulo: beneficioActual.titulo,
-            categoria: beneficioActual.categoria,
-            ubicacion: beneficioActual.ubicacion,
-            descripcion: beneficioActual.descripcion,
-            asesor: beneficioActual.asesor,
-            icono: beneficioActual.icono
-          })
-          .eq("id", beneficioActual.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("beneficios")
-          .insert([{
-            titulo: beneficioActual.titulo,
-            categoria: beneficioActual.categoria,
-            ubicacion: beneficioActual.ubicacion,
-            descripcion: beneficioActual.descripcion,
-            asesor: beneficioActual.asesor,
-            icono: beneficioActual.icono
-          }]);
-        if (error) throw error;
-      }
-      setModalAbierto(false);
-      cargarBeneficios();
-    } catch (error) {
-      console.error("Error al guardar:", error);
-      alert("Hubo un error al guardar el beneficio.");
-    }
-  };
-
-  const eliminarBeneficio = async (id: number | string) => {
-    if (!esAdmin) return; // Doble seguridad
-
-    if (confirm("¿Estás seguro de eliminar este convenio institucional?")) {
-      try {
-        const { error } = await supabase.from("beneficios").delete().eq("id", id);
-        if (error) throw error;
-        cargarBeneficios();
-      } catch (error) {
-        console.error("Error al eliminar:", error);
-      }
-    }
-  };
-
-  const abrirUsoBeneficio = async (beneficio: Beneficio) => {
-    setBeneficioSeleccionado(beneficio);
-    setExitoEnvio(false);
-    setModalUsoAbierto(true);
-    
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user && user.email) {
-        setCorreoSocio(user.email);
-      } else {
-        setCorreoSocio(""); 
-      }
-    } catch (error) {
-      console.error("Error obteniendo usuario:", error);
-      setCorreoSocio("");
-    }
-  };
-
-  const enviarCorreoBeneficio = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!beneficioSeleccionado) return;
-
-    setEnviandoCorreo(true);
-
-    try {
-      const serviceID = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID || "";
-      const templateID = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID || "";
-      const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY || "";
-
-      if (!serviceID || !templateID || !publicKey) {
-        throw new Error("Faltan las variables de entorno de EmailJS");
-      }
-
       const templateParams = {
-        to_email: correoSocio,
-        email: correoSocio,
-        user_email: correoSocio,
-        titulo: beneficioSeleccionado.titulo,
-        categoria: beneficioSeleccionado.categoria,
-        ubicacion: beneficioSeleccionado.ubicacion,
-        descripcion: beneficioSeleccionado.descripcion,
-        asesor: beneficioSeleccionado.asesor,
-        message: `Convenio: ${beneficioSeleccionado.titulo}. Detalle: ${beneficioSeleccionado.descripcion}. Asesor a cargo: ${beneficioSeleccionado.asesor}`
+        to_email: correoDestino.trim(),
+        socio_rut: socioInfo.rut,
+        beneficio_titulo: beneficio.titulo,
+        beneficio_descuento: beneficio.descuento,
+        beneficio_categoria: beneficio.categoria,
+        beneficio_descripcion: beneficio.descripcion,
+        message: `El socio con RUT ${socioInfo.rut} ha solicitado el convenio ${beneficio.titulo} (${beneficio.descuento}).`
       };
 
-      await emailjs.send(serviceID, templateID, templateParams, publicKey);
+      await emailjs.send(
+        'service_thw7gfn',  // Service ID real
+        'template_ot9airk', // Template ID real
+        templateParams,
+        'GG3tS19diXKenuD_-' // Public Key real
+      );
 
-      setEnviandoCorreo(false);
-      setExitoEnvio(true);
-      
-      setTimeout(() => {
-        setModalUsoAbierto(false);
-        setExitoEnvio(false);
-      }, 3000);
+      alert(`✅ ¡Beneficio canjeado con éxito!\n\nHemos enviado un correo de confirmación y comprobante a: ${correoDestino}`);
+    } catch (err: any) {
+      alert(`❌ Fallo al enviar el correo. Revisa la consola.`);
+      console.error("Detalle EmailJS:", err);
+    } finally {
+      setProcesandoUso(null);
+    }
+  };
 
-    } catch (error: any) {
-      console.error("Error al enviar el correo automático:", error);
-      setEnviandoCorreo(false);
-      alert(`Hubo un error al despachar el correo: ${error.message || "Revisa tus credenciales en el archivo .env.local"}`);
+  // === FUNCIONES ADMIN ===
+  const abrirModalNuevo = () => {
+    setIsEditing(false); setCurrentId(null); setTitulo(''); setDescripcion('');
+    setCategoria('Salud'); setDescuento(''); setImagenArchivo(null);
+    setImagenUrlActual(''); setIsModalOpen(true);
+  };
+
+  const abrirModalEditar = (beneficio: any) => {
+    setIsEditing(true); setCurrentId(beneficio.id); setTitulo(beneficio.titulo || '');
+    setDescripcion(beneficio.descripcion || ''); setCategoria(beneficio.categoria || 'Salud');
+    setDescuento(beneficio.descuento || ''); setImagenArchivo(null);
+    setImagenUrlActual(beneficio.imagen_url || ''); setIsModalOpen(true);
+  };
+
+  const handleGuardar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGuardando(true);
+
+    try {
+      const supabase = createClient();
+      let urlFinalImagen = imagenUrlActual;
+
+      if (imagenArchivo) {
+        const fileExt = imagenArchivo.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random()}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('beneficios').upload(fileName, imagenArchivo);
+        if (uploadError) throw uploadError;
+        const { data: { publicUrl } } = supabase.storage.from('beneficios').getPublicUrl(fileName);
+        urlFinalImagen = publicUrl;
+      }
+
+      const datosBeneficio = {
+        titulo: titulo.trim(),
+        descripcion: descripcion.trim(),
+        categoria: categoria.trim(),
+        descuento: descuento.trim(),
+        imagen_url: urlFinalImagen
+      };
+
+      if (isEditing && currentId) {
+        const { error } = await supabase.from('beneficios').update(datosBeneficio).eq('id', currentId);
+        if (error) throw error;
+        alert('✅ Beneficio actualizado.');
+      } else {
+        const { error } = await supabase.from('beneficios').insert([datosBeneficio]);
+        if (error) throw error;
+        alert('✨ Nuevo beneficio publicado.');
+      }
+      setIsModalOpen(false);
+      fetchBeneficios(); 
+    } catch (err: any) {
+      alert('❌ Error: ' + err.message);
+    } finally {
+      setGuardando(false);
+    }
+  };
+
+  const handleEliminar = async (id: number) => {
+    if (!window.confirm("⚠️ ¿Eliminar convenio?")) return;
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('beneficios').delete().eq('id', id);
+      if (error) throw error;
+      alert('🗑️ Eliminado.');
+      fetchBeneficios();
+    } catch(err: any) {
+      alert('❌ Error: ' + err.message);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-100/70 p-6 md:p-10 font-sans pb-24">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="bg-slate-950 font-sans text-slate-100 min-h-screen relative w-full pb-24 overflow-hidden">
+      <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-[150px] pointer-events-none"></div>
+
+      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-10 relative z-10">
         
-        {/* Cabecera */}
-        <div className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-200/80 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-black tracking-wider uppercase">
-              <span>🛡️ Sindicato PYC - Convenios Activos</span>
-            </div>
-            <h1 className="text-3xl font-black text-slate-900 tracking-tight">Catálogo de Convenios y Beneficios</h1>
-            <p className="text-slate-500 text-sm max-w-2xl">
-              Aprovecha la red de descuentos exclusivos. Selecciona un beneficio para utilizarlo y recibir el comprobante detallado en tu correo institucional.
-            </p>
-          </div>
-          
-          {/* Se oculta el botón si no es admin */}
-          {esAdmin && (
-            <button 
-              onClick={abrirModalCrear}
-              className="bg-blue-600 hover:bg-blue-500 text-white font-extrabold px-6 py-3.5 rounded-2xl shadow-lg shadow-blue-600/30 transition-all flex items-center gap-2 text-sm whitespace-nowrap"
-            >
-              <span>✨ Nuevo Convenio</span>
-            </button>
-          )}
-        </div>
-
-        {/* Buscador y Filtros */}
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200/80 flex flex-col md:flex-row gap-4 items-center justify-between">
-          <div className="relative w-full md:w-96">
-            <span className="absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400">🔍</span>
-            <input 
-              type="text"
-              placeholder="Buscar por nombre o detalle..."
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-600/50 font-medium transition"
-            />
-          </div>
-
-          <div className="flex flex-wrap gap-2 w-full md:w-auto">
-            {["Todos", "Salud", "Educación", "Recreación", "Comercio"].map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setFiltro(cat)}
-                className={`px-4 py-2.5 rounded-xl text-xs font-extrabold transition-all ${
-                  filtro === cat 
-                    ? "bg-blue-600 text-white shadow-md shadow-blue-600/20" 
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Grid de Beneficios */}
-        {cargando ? (
-          <div className="text-center py-20">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-600 border-t-transparent"></div>
-            <p className="text-slate-500 text-sm mt-3 font-semibold">Cargando convenios desde Supabase...</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {beneficiosFiltrados.length === 0 ? (
-              <div className="col-span-full bg-white rounded-3xl p-12 text-center border border-slate-200">
-                <p className="text-slate-400 font-semibold">No se encontraron convenios registrados.</p>
-              </div>
-            ) : (
-              beneficiosFiltrados.map((b) => (
-                <div key={b.id} className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/40 border border-slate-200/80 flex flex-col justify-between relative group hover:border-blue-300 transition-all">
-                  
-                  {/* Se ocultan los botones de editar/eliminar si no es admin */}
-                  {esAdmin && (
-                    <div className="absolute top-4 right-4 flex items-center gap-1 bg-slate-100/90 backdrop-blur p-1 rounded-xl border border-slate-200 opacity-90 md:opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => abrirModalEditar(b)} title="Editar" className="p-2 hover:bg-white text-slate-600 hover:text-blue-600 rounded-lg text-xs font-bold transition">✏️</button>
-                      <button onClick={() => eliminarBeneficio(b.id)} title="Eliminar" className="p-2 hover:bg-white text-slate-600 hover:text-red-600 rounded-lg text-xs font-bold transition">🗑️</button>
-                    </div>
-                  )}
-
-                  <div>
-                    <div className="flex justify-between items-start mb-4 pr-16">
-                      <div className="w-12 h-12 bg-blue-50 text-2xl rounded-2xl flex items-center justify-center shadow-inner">
-                        {b.icono || "💡"}
-                      </div>
-                      <span className="bg-slate-100 text-slate-700 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full">
-                        {b.categoria}
-                      </span>
-                    </div>
-
-                    <h3 className="text-lg font-black text-slate-900 mb-1">{b.titulo}</h3>
-                    <p className="text-xs font-semibold text-blue-600 mb-3 flex items-center gap-1">
-                      <span>📍</span> {b.ubicacion}
-                    </p>
-                    <p className="text-slate-500 text-xs leading-relaxed mb-6">
-                      {b.descripcion}
-                    </p>
-                  </div>
-
-                  <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                    <div>
-                      <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Asesor a cargo</span>
-                      <span className="text-xs font-extrabold text-slate-800">{b.asesor}</span>
-                    </div>
-                    <button 
-                      onClick={() => abrirUsoBeneficio(b)}
-                      className="bg-slate-900 hover:bg-blue-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-sm"
-                    >
-                      Usar Beneficio
-                    </button>
-                  </div>
-
+        {/* ========================================================================= */}
+        {/* ========================= VISTA SOCIO (DEFAULT) ========================= */}
+        {/* ========================================================================= */}
+        {!isAdmin && (
+          <>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+              <div>
+                <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 px-4 py-1.5 rounded-full text-blue-400 text-[10px] font-black tracking-[0.2em] uppercase mb-4">
+                  ✨ Mi Portal
                 </div>
-              ))
-            )}
-          </div>
+                <h1 className="text-4xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">Mis Beneficios</h1>
+              </div>
+
+              {/* Miní Credencial del Socio para Reclamar Beneficios */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center gap-4 w-full md:w-auto shadow-lg">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center text-xl shadow-inner border border-white/10">👷🏽‍♂️</div>
+                <div>
+                  <p className="text-[10px] font-black uppercase text-slate-500 tracking-widest">Socio Activo</p>
+                  <p className="font-bold text-white text-sm">{socioInfo.rut}</p>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-slate-400 mb-8 max-w-2xl">Muestra tu RUT en caja o ingresa tu código en línea para hacer válidos estos convenios exclusivos.</p>
+
+            {/* Filtros Básicos Socio */}
+            <div className="flex overflow-x-auto pb-4 gap-2 mb-8 hide-scrollbar">
+              {categoriasFiltro.map(cat => (
+                <button key={cat} onClick={() => setFiltroActivo(cat)} className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-colors ${filtroActivo === cat ? 'bg-blue-600 text-white' : 'bg-slate-900 text-slate-400 border border-slate-800'}`}>
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {/* Lista Visual Socio */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {beneficiosFiltrados.map(b => (
+                <div key={b.id} className="bg-slate-900/50 backdrop-blur-xl border border-slate-800 rounded-3xl overflow-hidden hover:border-blue-500/50 transition-all flex flex-col">
+                  <div className="h-40 bg-slate-800 relative">
+                    {b.imagen_url ? <img src={b.imagen_url} className="w-full h-full object-cover" alt={b.titulo}/> : <div className="w-full h-full flex items-center justify-center text-4xl opacity-30">🎁</div>}
+                    <div className="absolute top-3 right-3 bg-slate-900/80 backdrop-blur text-white text-[9px] font-black px-3 py-1 rounded-full uppercase tracking-wider">{b.categoria}</div>
+                  </div>
+                  <div className="p-6 flex-grow flex flex-col">
+                    <h3 className="text-lg font-bold text-white mb-2">{b.titulo}</h3>
+                    <p className="text-xs text-slate-400 line-clamp-3 mb-4">{b.descripcion}</p>
+                    <div className="mt-auto flex justify-between items-center pt-4 border-t border-slate-800/50">
+                      <span className="text-emerald-400 font-black text-xs bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20">{b.descuento}</span>
+                      <button 
+                        onClick={() => handleUsarBeneficio(b)}
+                        disabled={procesandoUso === b.id}
+                        className="text-xs font-bold text-white bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-xl transition-colors shadow-lg shadow-blue-900/30 disabled:opacity-50"
+                      >
+                        {procesandoUso === b.id ? 'Procesando...' : 'Usar 🎟️'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
         )}
 
-      </div>
 
-      {/* MODAL USAR BENEFICIO (CORREO AUTOMÁTICO EMAILJS) */}
-      {modalUsoAbierto && beneficioSeleccionado && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-8 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
-            
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-black text-slate-900">📧 Solicitar Convenio</h2>
-              <button 
-                onClick={() => setModalUsoAbierto(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold flex items-center justify-center transition"
-              >
-                ✕
+        {/* ========================================================================= */}
+        {/* ========================== VISTA ADMINISTRADOR ========================== */}
+        {/* ========================================================================= */}
+        {isAdmin && (
+          <>
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8 border-b border-red-900/30 pb-8">
+              <div>
+                <div className="flex items-center gap-4 mb-3">
+                  <Link href="/dashboard/admin" className="text-slate-400 hover:text-white transition-colors font-bold text-sm bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-700">← Volver al Admin</Link>
+                  <span className="bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-black tracking-[0.2em] uppercase px-3 py-1 rounded-full flex items-center gap-2"><span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span> Módulo Gestor</span>
+                </div>
+                <h1 className="text-4xl font-black text-white tracking-tight">Gestión de Convenios</h1>
+              </div>
+              <button onClick={abrirModalNuevo} className="bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-black px-6 py-3.5 rounded-xl shadow-lg shadow-red-900/30 transition-all flex items-center gap-2">
+                <span className="text-xl">+</span> Crear Nuevo Convenio
               </button>
             </div>
 
-            {exitoEnvio ? (
-              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 text-center space-y-3">
-                <div className="w-12 h-12 bg-emerald-500 text-white text-2xl rounded-full flex items-center justify-center mx-auto shadow-md">✓</div>
-                <h3 className="text-base font-black text-emerald-900">¡Correo enviado con éxito!</h3>
-                <p className="text-xs text-emerald-700 font-medium">
-                  Se ha enviado el detalle del convenio y el contacto de tu asesor <strong>{beneficioSeleccionado.asesor}</strong> a <strong>{correoSocio}</strong>.
-                </p>
-              </div>
-            ) : (
-              <form onSubmit={enviarCorreoBeneficio} className="space-y-4">
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-1">
-                  <span className="text-[10px] font-black uppercase text-blue-600 tracking-wider">Beneficio Seleccionado</span>
-                  <h4 className="text-sm font-black text-slate-900">{beneficioSeleccionado.titulo}</h4>
-                  <p className="text-xs text-slate-500">{beneficioSeleccionado.descripcion}</p>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Correo electrónico del socio</label>
-                  <input 
-                    type="email" 
-                    required
-                    value={correoSocio}
-                    onChange={(e) => setCorreoSocio(e.target.value)}
-                    placeholder="socio@sindicatopyc.cl"
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50"
-                  />
-                  <p className="text-[11px] text-slate-400 mt-1">Recibirás el comprobante oficial en tu bandeja de entrada.</p>
-                </div>
-
-                <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
-                  <button 
-                    type="button" 
-                    onClick={() => setModalUsoAbierto(false)}
-                    className="px-5 py-3 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition"
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    type="submit" 
-                    disabled={enviandoCorreo}
-                    className="bg-blue-600 hover:bg-blue-500 text-white font-extrabold px-6 py-3 rounded-xl text-xs transition shadow-lg shadow-blue-600/30 flex items-center gap-2"
-                  >
-                    {enviandoCorreo ? (
-                      <>
-                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Enviando...</span>
-                      </>
-                    ) : (
-                      <span>Enviar Comprobante 📤</span>
-                    )}
-                  </button>
-                </div>
-              </form>
-            )}
-
-          </div>
-        </div>
-      )}
-
-      {/* MODAL CREAR / EDITAR */}
-      {modalAbierto && esAdmin && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-8 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-black text-slate-900">
-                {modoEdicion ? "✏️ Editar Convenio" : "✨ Registrar Nuevo Convenio"}
-              </h2>
-              <button onClick={() => setModalAbierto(false)} className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 font-bold flex items-center justify-center transition">✕</button>
+            {/* Formato Tabla para Administrador */}
+            <div className="bg-slate-900 rounded-3xl border border-slate-800 shadow-xl overflow-x-auto">
+              <table className="w-full text-left min-w-[800px]">
+                <thead className="bg-slate-950/50 border-b border-slate-800 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                  <tr>
+                    <th className="p-5 pl-8">Convenio</th>
+                    <th className="p-5">Detalle</th>
+                    <th className="p-5 text-center">Descuento</th>
+                    <th className="p-5 pr-8 text-right">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800">
+                  {beneficios.map(b => (
+                    <tr key={b.id} className="hover:bg-slate-800/30 transition-colors">
+                      <td className="p-5 pl-8">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-xl overflow-hidden bg-slate-800 border border-slate-700 shrink-0">
+                            {b.imagen_url ? <img src={b.imagen_url} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-xl">🎁</div>}
+                          </div>
+                          <div>
+                            <p className="font-bold text-white text-sm">{b.titulo}</p>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">{b.categoria}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-5 text-xs text-slate-400 font-medium max-w-xs truncate">{b.descripcion}</td>
+                      <td className="p-5 text-center">
+                        <span className="bg-emerald-500/10 text-emerald-400 text-xs font-bold px-3 py-1 rounded-md border border-emerald-500/20">{b.descuento}</span>
+                      </td>
+                      <td className="p-5 pr-8">
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => abrirModalEditar(b)} className="bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white w-9 h-9 rounded-lg flex items-center justify-center transition-colors">✏️</button>
+                          <button onClick={() => handleEliminar(b.id)} className="bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white w-9 h-9 rounded-lg flex items-center justify-center transition-colors">🗑️</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          </>
+        )}
+      </main>
 
-            <form onSubmit={guardarBeneficio} className="space-y-4">
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Título del Convenio</label>
-                <input type="text" required value={beneficioActual.titulo} onChange={(e) => setBeneficioActual({...beneficioActual, titulo: e.target.value})} placeholder="Ej: Clínica Dental" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+      {/* MODAL CREAR/EDITAR (SOLO ADMIN) */}
+      {isAdmin && isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-2xl border border-slate-700 my-auto">
+            <div className="p-6 border-b border-slate-800 flex justify-between items-center">
+              <h3 className="text-xl font-black text-white">{isEditing ? 'Editar Convenio' : 'Nuevo Convenio'}</h3>
+              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white text-xl">✕</button>
+            </div>
+            
+            <form onSubmit={handleGuardar} className="p-6 space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Empresa / Título</label>
+                  <input type="text" required value={titulo} onChange={(e) => setTitulo(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:border-red-500 outline-none" />
+                </div>
                 <div>
-                  <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Categoría</label>
-                  <select value={beneficioActual.categoria} onChange={(e) => setBeneficioActual({...beneficioActual, categoria: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50">
-                    <option value="Salud">Salud</option>
-                    <option value="Educación">Educación</option>
-                    <option value="Recreación">Recreación</option>
-                    <option value="Comercio">Comercio</option>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Categoría</label>
+                  <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:border-red-500 outline-none">
+                    {categoriasForm.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Ubicación</label>
-                  <input type="text" required value={beneficioActual.ubicacion} onChange={(e) => setBeneficioActual({...beneficioActual, ubicacion: e.target.value})} placeholder="Ej: RM" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50" />
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Descuento</label>
+                  <input type="text" required value={descuento} onChange={(e) => setDescuento(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:border-red-500 outline-none" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Descripción</label>
+                  <textarea required rows={3} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:border-red-500 outline-none resize-none"></textarea>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Imagen (Opcional)</label>
+                  <input type="file" accept="image/*" onChange={(e) => setImagenArchivo(e.target.files ? e.target.files[0] : null)} className="w-full text-sm text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-slate-800 file:text-white bg-slate-950 border border-slate-700 rounded-xl p-1 outline-none" />
                 </div>
               </div>
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Descripción</label>
-                <textarea required rows={3} value={beneficioActual.descripcion} onChange={(e) => setBeneficioActual({...beneficioActual, descripcion: e.target.value})} placeholder="Detalles..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50 resize-none" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Asesor a Cargo</label>
-                  <input type="text" required value={beneficioActual.asesor} onChange={(e) => setBeneficioActual({...beneficioActual, asesor: e.target.value})} placeholder="Nombre" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50" />
-                </div>
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-700 uppercase mb-1">Icono (Emoji)</label>
-                  <input type="text" required value={beneficioActual.icono} onChange={(e) => setBeneficioActual({...beneficioActual, icono: e.target.value})} placeholder="💡" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-900 placeholder-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50 text-center text-lg" />
-                </div>
-              </div>
-              <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
-                <button type="button" onClick={() => setModalAbierto(false)} className="px-5 py-3 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition">Cancelar</button>
-                <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white font-extrabold px-6 py-3 rounded-xl text-xs transition shadow-lg shadow-blue-600/30">{modoEdicion ? "Guardar Cambios" : "Crear Convenio"}</button>
+              <div className="pt-6 flex gap-3">
+                <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 bg-slate-800 text-white font-bold py-3.5 rounded-xl text-sm">Cancelar</button>
+                <button type="submit" disabled={guardando} className="flex-1 bg-red-600 hover:bg-red-500 text-white font-black py-3.5 rounded-xl shadow-lg shadow-red-900/20 text-sm">{guardando ? 'Guardando...' : 'Guardar Beneficio'}</button>
               </div>
             </form>
           </div>
         </div>
       )}
-
     </div>
   );
 }

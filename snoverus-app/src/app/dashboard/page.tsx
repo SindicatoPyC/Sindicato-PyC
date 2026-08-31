@@ -29,6 +29,7 @@ export default function Dashboard() {
         setUserRol(rolCookie.split('=')[1]);
       }
 
+      // 1. CARGA DE BASE DE DATOS AISLADA
       try {
         const supabase = createClient();
         
@@ -43,23 +44,30 @@ export default function Dashboard() {
       } catch (err) {
         console.error("Error al conectar con Supabase:", err);
       } finally {
+        // Esto garantiza que la pantalla deje de cargar aunque haya errores
         setLoading(false);
       }
 
+      // 2. PETICIÓN BLINDADA CONTRA CAÍDAS DE MINDICADOR.CL
       try {
         const res = await fetch('https://mindicador.cl/api');
-        if (res.ok) {
-          const data = await res.json();
-          setIndicadores({
-            uf: data.uf.valor,
-            utm: data.utm.valor,
-            dolar: data.dolar.valor,
-            cargando: false
-          });
-        }
+        if (!res.ok) throw new Error('Error HTTP en indicadores');
+        const data = await res.json();
+        
+        setIndicadores({
+          uf: data.uf?.valor || 38000,
+          utm: data.utm?.valor || 66000,
+          dolar: data.dolar?.valor || 950,
+          cargando: false
+        });
       } catch (error) {
-        console.error("Error al cargar indicadores:", error);
-        setIndicadores(prev => ({ ...prev, cargando: false }));
+        console.warn("⚠️ Mindicador no disponible. Usando valores de respaldo por seguridad.");
+        setIndicadores({
+          uf: 37900,
+          utm: 66000,
+          dolar: 950,
+          cargando: false
+        });
       }
     }
     fetchData();
@@ -87,8 +95,6 @@ export default function Dashboard() {
 
   return (
     <div className="bg-slate-950 font-sans text-slate-100 pb-20 relative w-full">
-
-      {/* Contenedor principal con pt-6 para acoplarse perfectamente al Navbar */}
       <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-6 space-y-16 relative z-10">
         
         {/* HERO: Carrusel Principal */}

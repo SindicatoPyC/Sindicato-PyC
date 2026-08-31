@@ -8,6 +8,7 @@ import { createClient } from '../../lib/supabase';
 export default function AdminPanel() {
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
+  const [validando, setValidando] = useState(true);
 
   // Estados para Formularios
   const [tituloNoticia, setTituloNoticia] = useState('');
@@ -17,7 +18,6 @@ export default function AdminPanel() {
   const [tituloAsamblea, setTituloAsamblea] = useState('');
   const [loadingAsamblea, setLoadingAsamblea] = useState(false);
 
-  // Estados para Archivo PDF del Acta
   const [actaTitulo, setActaTitulo] = useState('');
   const [actaTipo, setActaTipo] = useState('Ordinaria');
   const [actaFecha, setActaFecha] = useState('');
@@ -32,18 +32,69 @@ export default function AdminPanel() {
   const [citas, setCitas] = useState<any[]>([]);
   const [loadingDatos, setLoadingDatos] = useState(true);
 
+  // Estados para Modal de Resolución de Ticket
+  const [ticketSeleccionado, setTicketSeleccionado] = useState<any>(null);
+  const [detalleResolucion, setDetalleResolucion] = useState('');
+  const [procesandoTicket, setProcesandoTicket] = useState(false);
+
+  // Estados para Modal de Edición de Ticket
+  const [ticketEnEdicion, setTicketEnEdicion] = useState<any>(null);
+  const [editTicketAsunto, setEditTicketAsunto] = useState('');
+  const [editTicketDescripcion, setEditTicketDescripcion] = useState('');
+  const [guardandoTicket, setGuardandoTicket] = useState(false);
+
+  // Estados para Modal de Edición de Usuario
+  const [usuarioEnEdicion, setUsuarioEnEdicion] = useState<any>(null);
+  const [editNombre, setEditNombre] = useState('');
+  const [editRut, setEditRut] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [guardandoUsuario, setGuardandoUsuario] = useState(false);
+
+  // Estados para los Menús Flotantes
+  const [menuAbiertoId, setMenuAbiertoId] = useState<string | null>(null);
+  const [ticketMenuAbiertoId, setTicketMenuAbiertoId] = useState<string | number | null>(null);
+
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (isMounted) {
+      validarAccesoAdmin();
+    }
+  }, [isMounted]);
+
+  const validarAccesoAdmin = async () => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (user) {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+        
+      const rolUsuario = String(data?.role || '').trim().toLowerCase();
+      
+      if (rolUsuario === 'admin' || rolUsuario === 'administrador' || rolUsuario === 'directiva') {
+        setValidando(false);
+        fetchEnterpriseData(); 
+      } else {
+        router.push('/dashboard'); 
+      }
+    } else {
+      router.push('/');
+    }
+  };
 
   const fetchEnterpriseData = async () => {
     try {
       const supabase = createClient();
       
-      // 1. Consultamos la tabla 'profiles' asegurando traer la columna 'role'
       const { data: usersData, error: userError } = await supabase
         .from('profiles')
-        .select('id, rut, email, full_name, role, created_at')
+        .select('*')
         .order('created_at', { ascending: false });
         
       if (!userError && Array.isArray(usersData)) {
@@ -65,21 +116,16 @@ export default function AdminPanel() {
     }
   };
 
-  useEffect(() => {
-    if (isMounted) fetchEnterpriseData();
-  }, [isMounted]);
-
+  // HANDLERS GENERALES
   const handlePublicarNoticia = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoadingNoticia(true);
     try {
       const supabase = createClient();
-      const { error } = await supabase.from('comunicados').insert([{ titulo: tituloNoticia, contenido: contenidoNoticia }]);
-      if (!error) {
-        alert('📢 ¡Comunicado publicado con éxito!');
-        setTituloNoticia(''); setContenidoNoticia('');
-        fetchEnterpriseData();
-      }
+      await supabase.from('comunicados').insert([{ titulo: tituloNoticia, contenido: contenidoNoticia }]);
+      setTituloNoticia(''); setContenidoNoticia('');
+      fetchEnterpriseData();
+      alert('📢 ¡Comunicado publicado!');
     } catch (err: any) { alert('Error: ' + err.message); } finally { setLoadingNoticia(false); }
   };
 
@@ -88,83 +134,105 @@ export default function AdminPanel() {
     setLoadingAsamblea(true);
     try {
       const supabase = createClient();
-      const { error } = await supabase.from('asambleas_votaciones').insert([{ titulo: tituloAsamblea, estado: 'Abierta' }]);
-      if (!error) {
-        alert('🗳️ ¡Asamblea abierta!');
-        setTituloAsamblea('');
-        fetchEnterpriseData();
-      }
+      await supabase.from('asambleas_votaciones').insert([{ titulo: tituloAsamblea, estado: 'Abierta' }]);
+      setTituloAsamblea('');
+      fetchEnterpriseData();
+      alert('🗳️ ¡Asamblea abierta!');
     } catch (err: any) { alert('Error: ' + err.message); } finally { setLoadingAsamblea(false); }
   };
 
   const handleSubirActa = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!actaArchivo) {
-      alert("⚠️ Por favor, selecciona un archivo PDF para el acta.");
-      return;
-    }
-    
+    if (!actaArchivo) return alert("⚠️ Selecciona un archivo PDF.");
     setLoadingActa(true);
     try {
       const supabase = createClient();
       const fileExt = actaArchivo.name.split('.').pop();
       const fileName = `${Date.now()}_acta.${fileExt}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('actas')
-        .upload(fileName, actaArchivo);
-
+      const { error: uploadError } = await supabase.storage.from('actas').upload(fileName, actaArchivo);
       if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from('actas').getPublicUrl(fileName);
+      await supabase.from('libro_actas').insert([{ titulo: actaTitulo, tipo_asamblea: actaTipo, fecha_reunion: actaFecha || new Date().toISOString().split('T')[0], resumen_acuerdos: actaResumen, url_acta_pdf: publicUrl }]);
+      setActaTitulo(''); setActaTipo('Ordinaria'); setActaFecha(''); setActaResumen(''); setActaArchivo(null);
+      fetchEnterpriseData();
+      alert('📜 ¡Acta subida!');
+    } catch (err: any) { alert('Error: ' + err.message); } finally { setLoadingActa(false); }
+  };
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('actas')
-        .getPublicUrl(fileName);
-
-      const { error } = await supabase.from('libro_actas').insert([{
-        titulo: actaTitulo,
-        tipo_asamblea: actaTipo,
-        fecha_reunion: actaFecha || new Date().toISOString().split('T')[0],
-        resumen_acuerdos: actaResumen,
-        url_acta_pdf: publicUrl
-      }]);
+  const handleCambiarRol = async (user: any) => {
+    const rolActual = String(user.role || '').toLowerCase();
+    const nuevoRol = (rolActual === 'admin' || rolActual === 'administrador') ? 'socio' : 'admin';
+    try {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from('profiles')
+        .update({ role: nuevoRol })
+        .eq('id', user.id);
 
       if (!error) {
-        alert('📜 ¡Acta PDF registrada y subida oficialmente!');
-        setActaTitulo(''); setActaTipo('Ordinaria'); setActaFecha(''); setActaResumen(''); setActaArchivo(null);
-        fetchEnterpriseData();
+        setUsuarios(usuarios.map(u => (u.id === user.id) ? { ...u, role: nuevoRol } : u));
+        alert(`✅ Rol actualizado exitosamente a ${nuevoRol.toUpperCase()}`);
       } else {
-        alert('Error: ' + error.message);
+        alert('❌ Error de Supabase: ' + error.message);
       }
-    } catch (err: any) {
-      alert('Error al subir: ' + err.message);
-    } finally {
-      setLoadingActa(false);
+    } catch (err: any) { 
+      alert('❌ Error inesperado: ' + err.message);
+      console.error(err); 
     }
   };
 
-  // Cambio de roles dinámico y seguro conectado a Supabase
-  const handleCambiarRol = async (user: any) => {
-    const nuevoRol = user.role === 'admin' ? 'socio' : 'admin';
+  const handleEditarUsuario = (user: any) => {
+    setUsuarioEnEdicion(user);
+    setEditNombre(user.full_name || '');
+    setEditRut(user.rut || '');
+    setEditEmail(user.email || '');
+  };
+
+  const guardarEdicionUsuario = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGuardandoUsuario(true);
     try {
       const supabase = createClient();
-      const { error } = await supabase.from('profiles').update({ role: nuevoRol }).eq('id', user.id);
-      
+      const { error } = await supabase.from('profiles').update({
+        full_name: editNombre,
+        rut: editRut,
+        email: editEmail
+      }).eq('id', usuarioEnEdicion.id);
+
       if (!error) {
-        setUsuarios(usuarios.map(u => (u.id === user.id) ? { ...u, role: nuevoRol } : u));
+        setUsuarios(usuarios.map(u => (u.id === usuarioEnEdicion.id) 
+          ? { ...u, full_name: editNombre, rut: editRut, email: editEmail } 
+          : u
+        ));
+        setUsuarioEnEdicion(null);
+        alert('✅ Perfil actualizado exitosamente.');
       } else {
-        alert('Error actualizando el rol: Verifica las políticas RLS en Supabase.');
+        alert('❌ Error al actualizar perfil: ' + error.message);
+      }
+    } catch (err: any) {
+      alert('❌ Excepción: ' + err.message);
+      console.error(err);
+    } finally {
+      setGuardandoUsuario(false);
+    }
+  };
+
+  const handleEliminarUsuario = async (user: any) => {
+    const confirmacion = window.confirm(`⚠️ ESTÁS A PUNTO DE ELIMINAR UN SOCIO\n\n¿Estás seguro de que deseas eliminar permanentemente a ${user.full_name || user.rut} del padrón?`);
+    if (!confirmacion) return;
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('profiles').delete().eq('id', user.id);
+      if (!error) {
+        setUsuarios(usuarios.filter(u => u.id !== user.id));
+        alert('✅ Usuario eliminado correctamente del padrón.');
+      } else {
+        alert('❌ Error al eliminar: ' + error.message);
       }
     } catch (err: any) {
       console.error(err);
     }
-  };
-
-  const handleActualizarTicket = async (id: number, nuevoEstado: string) => {
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from('tickets_soporte').update({ estado: nuevoEstado }).eq('id', id);
-      if (!error) setTickets(tickets.map(t => t.id === id ? { ...t, estado: nuevoEstado } : t));
-    } catch (err: any) {}
   };
 
   const handleActualizarCita = async (id: number, nuevoEstado: string) => {
@@ -175,14 +243,151 @@ export default function AdminPanel() {
     } catch (err: any) {}
   };
 
-  const handleLogout = () => {
-    document.cookie = 'sb-sindicato-session=; path=/; max-age=0;';
-    document.cookie = 'sb-sindicato-rol=; path=/; max-age=0;';
+  // --- LÓGICA DE GESTIÓN Y RESOLUCIÓN DE TICKETS ---
+  const abrirModalResolucion = (ticket: any) => {
+    setTicketSeleccionado(ticket);
+    setDetalleResolucion('');
+  };
+
+  const handleEditarTicket = (ticket: any) => {
+    setTicketEnEdicion(ticket);
+    setEditTicketAsunto(ticket.asunto || '');
+    setEditTicketDescripcion(ticket.descripcion || '');
+  };
+
+  const guardarEdicionTicket = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGuardandoTicket(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('tickets_soporte').update({
+        asunto: editTicketAsunto,
+        descripcion: editTicketDescripcion
+      }).eq('id', ticketEnEdicion.id);
+
+      if (!error) {
+        setTickets(tickets.map(t => (t.id === ticketEnEdicion.id) 
+          ? { ...t, asunto: editTicketAsunto, descripcion: editTicketDescripcion } 
+          : t
+        ));
+        setTicketEnEdicion(null);
+        alert('✅ Ticket actualizado exitosamente.');
+      } else {
+        alert('❌ Error al actualizar ticket: ' + error.message);
+      }
+    } catch (err: any) {
+      alert('❌ Excepción: ' + err.message);
+    } finally {
+      setGuardandoTicket(false);
+    }
+  };
+
+  const handleEliminarTicket = async (id: string | number) => {
+    if (!window.confirm("⚠️ ¿Estás seguro de que deseas ELIMINAR este ticket permanentemente? Esta acción no se puede deshacer.")) return;
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('tickets_soporte').delete().eq('id', id);
+      if (!error) {
+        setTickets(tickets.filter(t => t.id !== id));
+      } else {
+        alert("❌ Error al eliminar el ticket: " + error.message);
+      }
+    } catch (err: any) {
+      console.error(err);
+    }
+  };
+
+  const handleActualizarEstadoTicket = async (id: string | number, nuevoEstado: string) => {
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('tickets_soporte').update({ estado: nuevoEstado }).eq('id', id);
+      if (!error) {
+        setTickets(tickets.map(t => t.id === id ? { ...t, estado: nuevoEstado } : t));
+      } else {
+        alert("❌ Error al cambiar el estado: " + error.message);
+      }
+    } catch (err: any) {
+      console.error(err);
+    }
+  };
+
+  const confirmarResolucionTicket = async () => {
+    if (!detalleResolucion.trim()) return alert("Debes ingresar un detalle de resolución.");
+    
+    // 1. OBTENER Y VALIDAR EL CORREO ANTES DE TOCAR LA BASE DE DATOS
+    const usuarioAsociado = usuarios.find(u => u.id === ticketSeleccionado.user_id || u.rut === ticketSeleccionado.rut);
+    let correoDestino = ticketSeleccionado.email || usuarioAsociado?.email;
+    const nombreDestino = usuarioAsociado?.full_name || ticketSeleccionado.nombre || 'Socio Anónimo';
+
+    // FALLBACK: Si no hay correo, lo pedimos manualmente
+    if (!correoDestino || correoDestino === 'No especificado') {
+      const correoManual = window.prompt(
+        "⚠️ Este ticket es anónimo o no tiene correo registrado.\n\nPor favor, ingresa el correo del socio manualmente para notificarle:"
+      );
+
+      if (!correoManual || !correoManual.trim()) {
+        return alert("❌ Operación cancelada. El ticket sigue PENDIENTE porque se necesita un correo para notificar.");
+      }
+      correoDestino = correoManual.trim();
+    }
+
+    setProcesandoTicket(true);
+
+    try {
+      const asunto = `Resolución de Ticket: ${ticketSeleccionado.asunto}`;
+      const cuerpo = `Estimado/a ${nombreDestino},\n\nSu ticket de soporte ha sido resuelto por la directiva.\n\nDetalle de la resolución:\n${detalleResolucion}\n\nAtentamente,\nDirectiva Sindicato PYC`;
+
+      const res = await fetch('/api/send-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: correoDestino,
+          name: nombreDestino,
+          subject: asunto,
+          message: cuerpo
+        })
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error?.message || errorData.error || "Fallo la conexión con la API de correos.");
+      }
+
+      const supabase = createClient();
+      const { error } = await supabase.from('tickets_soporte').update({ estado: 'Resuelto' }).eq('id', ticketSeleccionado.id);
+      
+      if (!error) {
+        setTickets(tickets.map(t => t.id === ticketSeleccionado.id ? { ...t, estado: 'Resuelto' } : t));
+        alert("✅ Correo enviado exitosamente y ticket marcado como resuelto.");
+        setTicketSeleccionado(null);
+      } else {
+        alert("⚠️ El correo se envió al socio, pero hubo un error al actualizar el estado en Supabase: " + error.message);
+      }
+
+    } catch (err: any) {
+      alert("❌ Error al enviar el correo: " + err.message + "\n\nEl ticket NO ha sido cerrado y sigue PENDIENTE.");
+      console.error(err);
+    } finally {
+      setProcesandoTicket(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    document.cookie = "sb-sindicato-session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     router.push('/');
   };
 
-  if (!isMounted) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><div className="text-white font-black animate-pulse text-xl">Cargando Consola Analítica...</div></div>;
+  if (!isMounted || validando) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
+  // Cálculos estadísticos
   const safeVotos = Array.isArray(votos) ? votos : [];
   const totalVotos = safeVotos.length;
   const aFavorCount = safeVotos.filter(v => v?.opcion_elegida === 'A favor').length;
@@ -194,289 +399,651 @@ export default function AdminPanel() {
   const totalTickets = safeTickets.length;
   const ticketsPendientes = safeTickets.filter(t => t?.estado === 'Pendiente').length;
   const ticketsRevision = safeTickets.filter(t => t?.estado === 'En Revisión').length;
-  const ticketsResueltos = safeTickets.filter(t => t?.estado === 'Resuelto').length;
-  const pctPendientes = totalTickets === 0 ? 0 : (ticketsPendientes / totalTickets) * 100;
-  const pctResueltos = totalTickets === 0 ? 0 : (ticketsResueltos / totalTickets) * 100;
 
   const safeUsuarios = Array.isArray(usuarios) ? usuarios : [];
   const safeCitas = Array.isArray(citas) ? citas : [];
 
   const getBadgeStyle = (estado: string) => {
     switch (estado) {
-      case 'Resuelto': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-      case 'En Revisión': return 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-      case 'Confirmada': return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-      case 'Rechazada': return 'bg-red-500/10 text-red-400 border-red-500/20';
-      default: return 'bg-slate-800 text-slate-300 border-slate-700'; 
+      case 'Resuelto': return 'bg-emerald-500/20 text-emerald-700 border-emerald-500/30';
+      case 'En Revisión': return 'bg-amber-500/20 text-amber-700 border-amber-500/30';
+      case 'Confirmada': return 'bg-indigo-500/20 text-indigo-700 border-indigo-500/30';
+      case 'Rechazada': return 'bg-red-500/20 text-red-700 border-red-500/30';
+      default: return 'bg-slate-200 text-slate-700 border-slate-300'; 
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-100/70 font-sans text-slate-900 pb-24">
+    <div className="min-h-screen bg-[#f4f7fb] font-sans pb-24 text-slate-900 selection:bg-blue-300 relative overflow-hidden" 
+         onClick={() => { 
+           if (menuAbiertoId) setMenuAbiertoId(null); 
+           if (ticketMenuAbiertoId) setTicketMenuAbiertoId(null); 
+         }}>
       
-      {/* HEADER INSTITUCIONAL PREMIUM */}
-      <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="bg-slate-900 text-white font-black px-3 py-1.5 rounded-xl text-xs tracking-wider uppercase shadow-md">
-              Enterprise
+      <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-blue-400/20 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
+      <div className="absolute top-40 right-0 w-[600px] h-[600px] bg-purple-400/10 rounded-full blur-[150px] translate-x-1/3 pointer-events-none"></div>
+
+      <div className="p-6 md:p-10 relative z-10">
+        
+        {/* HEADER PREMIUM */}
+        <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-[2.5rem] shadow-2xl shadow-blue-900/20 p-8 md:p-10 mb-12 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 max-w-7xl mx-auto relative overflow-hidden border border-slate-700/50">
+          <div className="absolute top-0 right-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 pointer-events-none"></div>
+          <div className="absolute -right-20 -top-20 w-64 h-64 bg-blue-500/30 rounded-full blur-3xl pointer-events-none"></div>
+          
+          <div className="relative z-10">
+            <div className="flex items-center gap-4 mb-3">
+              <span className="bg-gradient-to-r from-blue-500 to-cyan-400 text-white text-[11px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-full shadow-lg shadow-blue-500/30">
+                Panel Directiva
+              </span>
             </div>
-            <div>
-              <h1 className="text-lg font-black tracking-tight text-slate-900">SNOVERUS S.A.</h1>
-              <p className="text-[10px] font-extrabold text-blue-600 uppercase tracking-widest">Consola de Mando Analítica</p>
-            </div>
+            <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300 tracking-tight mb-2">SINDICATO PYC</h1>
+            <p className="text-sm font-medium text-blue-200/80 uppercase tracking-widest">Centro de Mando Operativo</p>
           </div>
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard" className="text-xs font-bold text-slate-600 hover:text-blue-600 bg-slate-100 hover:bg-slate-200 px-4 py-2.5 rounded-xl transition-all border border-slate-200">
-              ← Ver Portal Socios
+
+          <div className="flex gap-4 w-full md:w-auto relative z-10">
+            <Link href="/dashboard" className="flex-1 md:flex-none text-center px-6 py-3.5 bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-2xl text-sm font-bold transition-all backdrop-blur-md">
+              ← Portal Socios
             </Link>
-            <button onClick={handleLogout} className="text-xs font-bold text-white bg-red-600 hover:bg-red-500 px-4 py-2.5 rounded-xl transition-all shadow-md shadow-red-600/20">
+            <button onClick={handleLogout} className="flex-1 md:flex-none text-center px-6 py-3.5 bg-gradient-to-r from-red-600 to-red-500 text-white rounded-2xl text-sm font-bold hover:from-red-500 hover:to-red-400 transition-all shadow-lg shadow-red-600/30 border border-red-500/50">
               Cerrar Sesión
             </button>
           </div>
         </div>
-      </header>
 
-      <main className="max-w-7xl mx-auto px-6 mt-10 space-y-8">
-        
-        {/* KPI CARDS */}
-        <div className="bg-white p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-200/80">
-          <div className="mb-6 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-black uppercase text-blue-600 tracking-wider">Métricas en Directo</span>
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight">Business Intelligence & KPIs</h2>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="bg-slate-50 border border-slate-200/80 p-6 rounded-2xl shadow-sm">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Total Socios</span>
-              <span className="text-3xl font-black text-blue-600">{safeUsuarios.length}</span>
-            </div>
-            <div className="bg-slate-50 border border-slate-200/80 p-6 rounded-2xl shadow-sm">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Votos Emitidos</span>
-              <span className="text-3xl font-black text-emerald-600">{totalVotos}</span>
-            </div>
-            <div className="bg-slate-50 border border-slate-200/80 p-6 rounded-2xl shadow-sm">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Tickets Abiertos</span>
-              <span className="text-3xl font-black text-amber-600">{ticketsPendientes + ticketsRevision}</span>
-            </div>
-            <div className="bg-slate-50 border border-slate-200/80 p-6 rounded-2xl shadow-sm">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Citas Legales</span>
-              <span className="text-3xl font-black text-indigo-600">{safeCitas.length}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* GRÁFICOS / MÉTRICAS VISUALES */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <section className="bg-white border border-slate-200/80 rounded-3xl p-8 shadow-xl shadow-slate-200/50 flex flex-col justify-between">
-            <h3 className="text-lg font-black text-slate-900 mb-6">Distribución de Votación</h3>
-            <div className="w-full flex-grow flex flex-col justify-center space-y-6">
-              {totalVotos === 0 ? <p className="text-slate-400 text-xs font-semibold text-center py-6">Sin registros de votación activos.</p> : (
-                <>
-                  <div>
-                    <div className="flex justify-between text-xs font-bold mb-2">
-                      <span className="text-emerald-600 uppercase tracking-wider">A Favor</span>
-                      <span className="text-slate-800">{aFavorCount} votos ({pctFavor.toFixed(1)}%)</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                      <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${pctFavor}%` }}></div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-xs font-bold mb-2">
-                      <span className="text-red-600 uppercase tracking-wider">En Contra</span>
-                      <span className="text-slate-800">{enContraCount} votos ({pctContra.toFixed(1)}%)</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                      <div className="bg-red-500 h-full rounded-full transition-all duration-500" style={{ width: `${pctContra}%` }}></div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </section>
-
-          <section className="bg-white border border-slate-200/80 rounded-3xl p-8 shadow-xl shadow-slate-200/50 flex flex-col justify-between">
-            <h3 className="text-lg font-black text-slate-900 mb-6">Rendimiento de Mesa de Ayuda</h3>
-            <div className="w-full flex-grow flex flex-col justify-center space-y-6">
-              {totalTickets === 0 ? <p className="text-slate-400 text-xs font-semibold text-center py-6">Sin tickets registrados.</p> : (
-                <>
-                  <div>
-                    <div className="flex justify-between text-xs font-bold mb-2">
-                      <span className="text-slate-500 uppercase tracking-wider">Pendientes</span>
-                      <span className="text-slate-800">{ticketsPendientes} tickets</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                      <div className="bg-slate-400 h-full rounded-full transition-all duration-500" style={{ width: `${pctPendientes}%` }}></div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-xs font-bold mb-2">
-                      <span className="text-emerald-600 uppercase tracking-wider">Resueltos</span>
-                      <span className="text-slate-800">{ticketsResueltos} tickets</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                      <div className="bg-emerald-500 h-full rounded-full transition-all duration-500" style={{ width: `${pctResueltos}%` }}></div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </section>
-        </div>
-
-        {/* ACCIONES Y FORMULARIOS DE ADMINISTRACIÓN */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <main className="max-w-7xl mx-auto space-y-12">
           
-          {/* NUEVO COMUNICADO */}
-          <section className="bg-white border border-slate-200/80 rounded-3xl p-8 shadow-xl shadow-slate-200/50">
-            <h3 className="text-lg font-black text-slate-900 mb-4">📢 Nuevo Comunicado</h3>
-            <form onSubmit={handlePublicarNoticia} className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Título del Aviso</label>
-                <input type="text" required value={tituloNoticia} onChange={(e) => setTituloNoticia(e.target.value)} placeholder="Ej: Asamblea Extraordinaria" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50" />
-              </div>
-              <div>
-                <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Contenido</label>
-                <textarea required rows={3} value={contenidoNoticia} onChange={(e) => setContenidoNoticia(e.target.value)} placeholder="Escribe los detalles..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-600/50 resize-none"></textarea>
-              </div>
-              <button type="submit" disabled={loadingNoticia} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-extrabold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-600/30 text-xs">Publicar Muro</button>
-            </form>
-          </section>
+          {/* MÓDULOS DE GESTIÓN INTERACTIVOS */}
+          <div>
+            <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6 ml-2 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span>
+              Navegación Rápida
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
+              <Link href="/dashboard/admin/beneficios" className="group bg-white/80 backdrop-blur-xl rounded-[2rem] p-8 border border-white shadow-xl shadow-slate-200/50 hover:shadow-2xl hover:shadow-blue-500/20 hover:-translate-y-2 transition-all cursor-pointer relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-blue-100 to-transparent rounded-bl-full opacity-50 group-hover:scale-125 transition-transform duration-500"></div>
+                <div className="relative z-10">
+                  <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-2xl flex items-center justify-center text-3xl mb-6 shadow-lg shadow-blue-500/30 group-hover:scale-110 transition-transform text-white">🎁</div>
+                  <h3 className="text-xl font-black text-slate-800 mb-3">Convenios</h3>
+                  <p className="text-sm text-slate-500 font-medium leading-relaxed">Administra la red de beneficios, descuentos y alianzas para los socios.</p>
+                </div>
+              </Link>
+              <Link href="/dashboard/admin/socios" className="group bg-white/80 backdrop-blur-xl rounded-[2rem] p-8 border border-white shadow-xl shadow-slate-200/50 hover:shadow-2xl hover:shadow-emerald-500/20 hover:-translate-y-2 transition-all cursor-pointer relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-emerald-100 to-transparent rounded-bl-full opacity-50 group-hover:scale-125 transition-transform duration-500"></div>
+                <div className="relative z-10">
+                  <div className="w-16 h-16 bg-gradient-to-br from-emerald-500 to-teal-400 rounded-2xl flex items-center justify-center text-3xl mb-6 shadow-lg shadow-emerald-500/30 group-hover:scale-110 transition-transform text-white">👥</div>
+                  <h3 className="text-xl font-black text-slate-800 mb-3">Padrón de Socios</h3>
+                  <p className="text-sm text-slate-500 font-medium leading-relaxed">Visualiza el registro, valida credenciales y gestiona perfiles de trabajadores.</p>
+                </div>
+              </Link>
+              <Link href="/dashboard/admin/soporte" className="group bg-white/80 backdrop-blur-xl rounded-[2rem] p-8 border border-white shadow-xl shadow-slate-200/50 hover:shadow-2xl hover:shadow-amber-500/20 hover:-translate-y-2 transition-all cursor-pointer relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-amber-100 to-transparent rounded-bl-full opacity-50 group-hover:scale-125 transition-transform duration-500"></div>
+                <div className="relative z-10">
+                  <div className="w-16 h-16 bg-gradient-to-br from-amber-500 to-orange-400 rounded-2xl flex items-center justify-center text-3xl mb-6 shadow-lg shadow-amber-500/30 group-hover:scale-110 transition-transform text-white">🎧</div>
+                  <h3 className="text-xl font-black text-slate-800 mb-3">Mesa de Ayuda</h3>
+                  <p className="text-sm text-slate-500 font-medium leading-relaxed">Panel central para resolver solicitudes, consultas y reclamos laborales.</p>
+                </div>
+              </Link>
+            </div>
+          </div>
 
-          {/* APERTURA DE ASAMBLEA */}
-          <section className="bg-white border border-slate-200/80 rounded-3xl p-8 shadow-xl shadow-slate-200/50 flex flex-col">
-            <h3 className="text-lg font-black text-slate-900 mb-4">🗳️ Apertura de Asamblea</h3>
-            <form onSubmit={handleAbrirAsamblea} className="space-y-4 flex flex-col h-full justify-between">
-              <div>
-                <label className="block text-[10px] font-black uppercase text-slate-400 mb-1">Materia de Votación</label>
-                <input type="text" required value={tituloAsamblea} onChange={(e) => setTituloAsamblea(e.target.value)} placeholder="Ej: Aprobación de Presupuesto" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500/50" />
-              </div>
-              <button type="submit" disabled={loadingAsamblea} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold py-3.5 rounded-xl transition-all shadow-md text-xs">Abrir Votación Oficial</button>
-            </form>
-          </section>
+          {/* MÉTRICAS PRINCIPALES VIBRANTES */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-8 rounded-[2rem] shadow-xl shadow-blue-900/20 flex flex-col relative overflow-hidden text-white border border-blue-500/30 hover:scale-[1.02] transition-transform">
+              <div className="absolute -right-6 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+              <span className="text-blue-200 text-[11px] font-black uppercase tracking-[0.2em] mb-2 relative z-10">Total Socios</span>
+              <span className="text-5xl font-black relative z-10">{loadingDatos ? '...' : safeUsuarios.length}</span>
+            </div>
+            <div className="bg-gradient-to-br from-emerald-500 to-teal-700 p-8 rounded-[2rem] shadow-xl shadow-emerald-900/20 flex flex-col relative overflow-hidden text-white border border-emerald-400/30 hover:scale-[1.02] transition-transform">
+              <div className="absolute -right-6 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+              <span className="text-emerald-100 text-[11px] font-black uppercase tracking-[0.2em] mb-2 relative z-10">Votos Emitidos</span>
+              <span className="text-5xl font-black relative z-10">{loadingDatos ? '...' : totalVotos}</span>
+            </div>
+            <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-8 rounded-[2rem] shadow-xl shadow-amber-900/20 flex flex-col relative overflow-hidden text-white border border-amber-400/30 hover:scale-[1.02] transition-transform">
+              <div className="absolute -right-6 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+              <span className="text-amber-100 text-[11px] font-black uppercase tracking-[0.2em] mb-2 relative z-10">Tickets Activos</span>
+              <span className="text-5xl font-black relative z-10">{loadingDatos ? '...' : (ticketsPendientes + ticketsRevision)}</span>
+            </div>
+            <div className="bg-gradient-to-br from-indigo-600 to-purple-800 p-8 rounded-[2rem] shadow-xl shadow-indigo-900/20 flex flex-col relative overflow-hidden text-white border border-indigo-400/30 hover:scale-[1.02] transition-transform">
+              <div className="absolute -right-6 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+              <span className="text-indigo-200 text-[11px] font-black uppercase tracking-[0.2em] mb-2 relative z-10">Citas Legales</span>
+              <span className="text-5xl font-black relative z-10">{loadingDatos ? '...' : safeCitas.length}</span>
+            </div>
+          </div>
 
-          {/* SUBIR ACTA OFICIAL PDF */}
-          <section className="bg-white border border-slate-200/80 rounded-3xl p-8 shadow-xl shadow-slate-200/50 flex flex-col">
-            <h3 className="text-lg font-black text-slate-900 mb-4">📜 Subir Acta Oficial (PDF)</h3>
-            <form onSubmit={handleSubirActa} className="space-y-3 flex flex-col h-full justify-between">
-              <div className="space-y-3">
-                <input type="text" required value={actaTitulo} onChange={(e) => setActaTitulo(e.target.value)} placeholder="Título del Acta..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-purple-600/50" />
-                
-                <div className="grid grid-cols-2 gap-2">
-                  <input type="date" required value={actaFecha} onChange={(e) => setActaFecha(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-600/50" />
-                  <select value={actaTipo} onChange={(e) => setActaTipo(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-xs font-medium text-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-600/50">
+          {/* ACCIONES Y FORMULARIOS MODERNIZADOS */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <section className="bg-white/90 backdrop-blur-xl border border-white rounded-[2rem] p-8 shadow-xl shadow-slate-200/50">
+              <div className="flex items-center gap-4 mb-8">
+                <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-3 rounded-xl shadow-lg shadow-blue-500/30 text-xl">📢</div>
+                <h3 className="text-xl font-black text-slate-800">Noticias</h3>
+              </div>
+              <form onSubmit={handlePublicarNoticia} className="space-y-5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Título del Aviso</label>
+                  <input type="text" required value={tituloNoticia} onChange={(e) => setTituloNoticia(e.target.value)} placeholder="Ej: Asamblea Extraordinaria" className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-medium" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Contenido</label>
+                  <textarea required rows={3} value={contenidoNoticia} onChange={(e) => setContenidoNoticia(e.target.value)} placeholder="Escribe los detalles..." className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-medium resize-none"></textarea>
+                </div>
+                <button type="submit" disabled={loadingNoticia} className="w-full bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white font-black py-4 rounded-2xl transition-all shadow-lg shadow-blue-500/25 text-sm tracking-wide mt-2">
+                  {loadingNoticia ? 'Publicando...' : 'Publicar Comunicado'}
+                </button>
+              </form>
+            </section>
+
+            <section className="bg-white/90 backdrop-blur-xl border border-white rounded-[2rem] p-8 shadow-xl shadow-slate-200/50 flex flex-col">
+              <div className="flex items-center gap-4 mb-8">
+                <div className="bg-gradient-to-br from-amber-400 to-orange-500 text-white p-3 rounded-xl shadow-lg shadow-amber-500/30 text-xl">🗳️</div>
+                <h3 className="text-xl font-black text-slate-800">Votaciones</h3>
+              </div>
+              <form onSubmit={handleAbrirAsamblea} className="space-y-5 flex flex-col h-full justify-between">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Materia de Votación</label>
+                  <input type="text" required value={tituloAsamblea} onChange={(e) => setTituloAsamblea(e.target.value)} placeholder="Ej: Aprobación de Presupuesto" className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500 transition-all font-medium" />
+                </div>
+                <div className="bg-slate-900 rounded-2xl p-6 border border-slate-800 mt-4 mb-6 shadow-inner relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-2xl -mr-10 -mt-10"></div>
+                  <p className="text-[10px] font-black text-slate-400 mb-4 uppercase tracking-[0.2em]">Estado Actual Global</p>
+                  <div className="space-y-4 relative z-10">
+                    <div>
+                      <div className="flex justify-between text-xs font-bold mb-2"><span className="text-emerald-400">A Favor</span><span className="text-white">{pctFavor.toFixed(0)}%</span></div>
+                      <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden"><div className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full" style={{ width: `${pctFavor}%` }}></div></div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs font-bold mb-2"><span className="text-red-400">En Contra</span><span className="text-white">{pctContra.toFixed(0)}%</span></div>
+                      <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden"><div className="bg-gradient-to-r from-red-500 to-rose-400 h-full rounded-full" style={{ width: `${pctContra}%` }}></div></div>
+                    </div>
+                  </div>
+                </div>
+                <button type="submit" disabled={loadingAsamblea} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl transition-all shadow-lg shadow-slate-900/20 text-sm tracking-wide mt-auto">
+                  {loadingAsamblea ? 'Abriendo...' : 'Abrir Nueva Votación'}
+                </button>
+              </form>
+            </section>
+
+            <section className="bg-white/90 backdrop-blur-xl border border-white rounded-[2rem] p-8 shadow-xl shadow-slate-200/50 flex flex-col">
+              <div className="flex items-center gap-4 mb-8">
+                <div className="bg-gradient-to-br from-purple-500 to-indigo-500 text-white p-3 rounded-xl shadow-lg shadow-purple-500/30 text-xl">📜</div>
+                <h3 className="text-xl font-black text-slate-800">Libro de Actas</h3>
+              </div>
+              <form onSubmit={handleSubirActa} className="space-y-4 flex flex-col h-full justify-between">
+                <div>
+                  <input type="text" required value={actaTitulo} onChange={(e) => setActaTitulo(e.target.value)} placeholder="Título del Acta Oficial" className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500 transition-all font-medium" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <input type="date" required value={actaFecha} onChange={(e) => setActaFecha(e.target.value)} className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl px-4 py-3.5 text-sm text-slate-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500 transition-all font-medium" />
+                  <select value={actaTipo} onChange={(e) => setActaTipo(e.target.value)} className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl px-4 py-3.5 text-sm text-slate-600 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500 transition-all font-medium">
                     <option value="Ordinaria">Ordinaria</option>
                     <option value="Extraordinaria">Extraordinaria</option>
                     <option value="Directorio">Directorio</option>
                   </select>
                 </div>
+                <div>
+                  <input type="text" required value={actaResumen} onChange={(e) => setActaResumen(e.target.value)} placeholder="Resumen corto de Acuerdos" className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:border-purple-500 transition-all font-medium" />
+                </div>
+                <div className="mt-2">
+                  <input type="file" accept="application/pdf" required onChange={(e) => setActaArchivo(e.target.files ? e.target.files[0] : null)} className="w-full text-sm text-slate-500 file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-xs file:font-black file:uppercase file:tracking-wider file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 cursor-pointer bg-slate-50 border border-slate-200 rounded-2xl p-1.5 transition-all" />
+                </div>
+                <button type="submit" disabled={loadingActa} className="w-full bg-gradient-to-r from-purple-600 to-indigo-500 hover:from-purple-700 hover:to-indigo-600 text-white font-black py-4 rounded-2xl transition-all shadow-lg shadow-purple-500/25 text-sm tracking-wide mt-4">
+                  {loadingActa ? 'Subiendo PDF...' : 'Subir Acta al Servidor'}
+                </button>
+              </form>
+            </section>
+          </div>
 
-                <input type="text" required value={actaResumen} onChange={(e) => setActaResumen(e.target.value)} placeholder="Resumen de Acuerdos..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-purple-600/50" />
-                
+          {/* === SECCIÓN DE GESTIÓN DE ROLES === */}
+          <section className="bg-white/90 backdrop-blur-xl border border-white rounded-[2rem] shadow-xl shadow-slate-200/50 overflow-visible">
+            <div className="p-8 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex items-center justify-between rounded-t-[2rem]">
+              <div className="flex items-center gap-4">
+                <div className="bg-slate-900 text-white p-3 rounded-xl shadow-md text-xl">🛡️</div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">Control de Accesos y Padrón</h3>
+                  <p className="text-sm text-slate-500 font-medium mt-1">Administra los perfiles, asigna privilegios directivos y gestiona las cuentas.</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-2 overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[800px]">
+                <thead>
+                  <tr className="text-slate-400 text-[10px] font-black uppercase tracking-[0.15em] border-b border-slate-100">
+                    <th className="p-5 pl-8">Socio Registrado</th>
+                    <th className="p-5">Contacto / RUT</th>
+                    <th className="p-5">Nivel de Acceso</th>
+                    <th className="p-5 pr-8 text-right">Opciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {safeUsuarios.length === 0 ? (
+                    <tr><td colSpan={4} className="p-10 text-center text-slate-400 text-sm font-medium">Cargando padrón de usuarios...</td></tr>
+                  ) : (
+                    safeUsuarios.map((user, idx) => {
+                      const rolUsuario = String(user.role || '').toLowerCase();
+                      const isAdmin = rolUsuario === 'admin' || rolUsuario === 'administrador' || rolUsuario === 'directiva';
+                      const nombreMostrado = user.full_name || 'Socio sin nombre';
+                      const iniciales = nombreMostrado.substring(0, 2).toUpperCase();
+
+                      return (
+                        <tr key={user.id || user.rut || idx} className="hover:bg-blue-50/40 transition-colors group relative">
+                          <td className="p-5 pl-8">
+                            <div className="flex items-center gap-4">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-indigo-500 text-white flex items-center justify-center font-black text-xs shadow-md shadow-blue-500/30 shrink-0">
+                                {iniciales}
+                              </div>
+                              <div>
+                                <p className="font-extrabold text-slate-800 text-sm group-hover:text-blue-600 transition-colors">
+                                  {nombreMostrado}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-5 text-xs text-slate-500 font-medium">
+                            <span className="block text-slate-800 font-bold text-sm mb-0.5">{user.rut}</span>
+                            {user.email || 'Sin correo registrado'}
+                          </td>
+                          <td className="p-5">
+                            <span className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-full border ${isAdmin ? 'bg-indigo-50 text-indigo-600 border-indigo-200 shadow-sm shadow-indigo-100' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                              {isAdmin ? 'Administrador' : 'Socio'}
+                            </span>
+                          </td>
+                          
+                          {/* MENÚ DE ACCIONES (TRES PUNTITOS USUARIO) */}
+                          <td className="p-5 pr-8 text-right relative">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMenuAbiertoId(menuAbiertoId === user.id ? null : user.id);
+                                setTicketMenuAbiertoId(null);
+                              }}
+                              className="w-10 h-10 inline-flex items-center justify-center rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-100 transition-colors focus:outline-none"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
+                            </button>
+
+                            {/* DROPDOWN FLOTANTE USUARIO */}
+                            {menuAbiertoId === user.id && (
+                              <div 
+                                className="absolute right-12 top-10 w-56 bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden z-50 text-left animate-fade-in-up"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="p-2 space-y-1">
+                                  <button 
+                                    onClick={() => { handleEditarUsuario(user); setMenuAbiertoId(null); }}
+                                    className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-blue-600 rounded-xl transition-colors flex items-center gap-3"
+                                  >
+                                    <span className="text-lg">✏️</span> Editar Perfil
+                                  </button>
+                                  <button 
+                                    onClick={() => { handleCambiarRol(user); setMenuAbiertoId(null); }}
+                                    className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-indigo-600 rounded-xl transition-colors flex items-center gap-3"
+                                  >
+                                    <span className="text-lg">🔄</span> Hacer {isAdmin ? 'Socio' : 'Admin'}
+                                  </button>
+                                  <div className="h-px bg-slate-100 my-1"></div>
+                                  <button 
+                                    onClick={() => { handleEliminarUsuario(user); setMenuAbiertoId(null); }}
+                                    className="w-full text-left px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-3"
+                                  >
+                                    <span className="text-lg">🗑️</span> Eliminar Cuenta
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* === SECCIÓN DE MESA DE AYUDA (FORMATO TABLA) === */}
+          <section className="bg-white/90 backdrop-blur-xl border border-white rounded-[2rem] shadow-xl shadow-slate-200/50 overflow-visible">
+            <div className="p-8 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex items-center justify-between rounded-t-[2rem]">
+              <div className="flex items-center gap-4">
+                <div className="bg-slate-900 text-white p-3 rounded-xl shadow-md text-xl">🎧</div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">Mesa de Ayuda</h3>
+                  <p className="text-sm text-slate-500 font-medium mt-1">Gestiona los requerimientos, consultas y reclamos de los socios.</p>
+                </div>
+              </div>
+              <span className="bg-amber-100 text-amber-600 text-xs font-black uppercase tracking-wider px-4 py-1.5 rounded-full border border-amber-200 shadow-sm shadow-amber-100">{ticketsPendientes} Pendientes</span>
+            </div>
+            
+            <div className="p-2 overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[900px]">
+                <thead>
+                  <tr className="text-slate-400 text-[10px] font-black uppercase tracking-[0.15em] border-b border-slate-100">
+                    <th className="p-5 pl-8">Asunto del Ticket</th>
+                    <th className="p-5">Solicitante</th>
+                    <th className="p-5">Estado</th>
+                    <th className="p-5 pr-8 text-right">Opciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {safeTickets.length === 0 ? (
+                    <tr><td colSpan={4} className="p-10 text-center text-slate-400 text-sm font-medium">Bandeja de tickets impecable.</td></tr>
+                  ) : (
+                    safeTickets.map((ticket, idx) => {
+                      const infoSolicitante = safeUsuarios.find(u => u.id === ticket.user_id || u.rut === ticket.rut || u.email === ticket.email);
+                      const nombreSolicitante = infoSolicitante?.full_name || ticket.nombre || 'Socio Anónimo';
+                      const correoDestino = ticket.email || infoSolicitante?.email || 'No especificado';
+                      const rutSolicitante = ticket.rut || infoSolicitante?.rut || 'Sin RUT';
+
+                      return (
+                        <tr key={ticket.id || idx} className="hover:bg-blue-50/40 transition-colors group relative">
+                          <td className="p-5 pl-8">
+                            <div className="flex items-start gap-4">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-200 to-slate-300 text-slate-600 flex items-center justify-center font-black text-xs shadow-md shrink-0">
+                                🎫
+                              </div>
+                              <div>
+                                <p className="font-extrabold text-slate-800 text-sm group-hover:text-blue-600 transition-colors">
+                                  {ticket.asunto}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                                  {new Date(ticket.created_at).toLocaleDateString()}
+                                </p>
+                                <p className="text-xs text-slate-500 font-medium mt-2 line-clamp-1">{ticket.descripcion}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-5 text-xs text-slate-500 font-medium align-top">
+                            <span className="block text-slate-800 font-bold text-sm mb-0.5">{nombreSolicitante}</span>
+                            <span className="block">{rutSolicitante}</span>
+                            <span className="text-blue-600">{correoDestino}</span>
+                          </td>
+                          <td className="p-5 align-top">
+                            <span className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-full border ${getBadgeStyle(ticket.estado)}`}>
+                              {ticket.estado}
+                            </span>
+                          </td>
+                          
+                          {/* MENÚ DE ACCIONES (TRES PUNTITOS TICKET) */}
+                          <td className="p-5 pr-8 text-right relative align-top">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTicketMenuAbiertoId(ticketMenuAbiertoId === ticket.id ? null : ticket.id);
+                                setMenuAbiertoId(null);
+                              }}
+                              className="w-10 h-10 inline-flex items-center justify-center rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-100 transition-colors focus:outline-none"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z"></path></svg>
+                            </button>
+
+                            {/* DROPDOWN FLOTANTE TICKET */}
+                            {ticketMenuAbiertoId === ticket.id && (
+                              <div 
+                                className="absolute right-12 top-10 w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden z-50 text-left animate-fade-in-up"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="p-2 space-y-1">
+                                  {ticket.estado !== 'Resuelto' && (
+                                    <button 
+                                      onClick={() => { abrirModalResolucion(ticket); setTicketMenuAbiertoId(null); }}
+                                      className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-emerald-50 hover:text-emerald-600 rounded-xl transition-colors flex items-center gap-3"
+                                    >
+                                      <span className="text-lg">✅</span> Resolver y Notificar
+                                    </button>
+                                  )}
+                                  {ticket.estado === 'Resuelto' && (
+                                    <button 
+                                      onClick={() => { handleActualizarEstadoTicket(ticket.id, 'Pendiente'); setTicketMenuAbiertoId(null); }}
+                                      className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-amber-50 hover:text-amber-600 rounded-xl transition-colors flex items-center gap-3"
+                                    >
+                                      <span className="text-lg">🔄</span> Reabrir Ticket
+                                    </button>
+                                  )}
+                                  {ticket.estado === 'Pendiente' && (
+                                    <button 
+                                      onClick={() => { handleActualizarEstadoTicket(ticket.id, 'En Revisión'); setTicketMenuAbiertoId(null); }}
+                                      className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-blue-50 hover:text-blue-600 rounded-xl transition-colors flex items-center gap-3"
+                                    >
+                                      <span className="text-lg">👀</span> Marcar en Revisión
+                                    </button>
+                                  )}
+                                  <button 
+                                    onClick={() => { handleEditarTicket(ticket); setTicketMenuAbiertoId(null); }}
+                                    className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-indigo-600 rounded-xl transition-colors flex items-center gap-3"
+                                  >
+                                    <span className="text-lg">✏️</span> Editar Contenido
+                                  </button>
+                                  <div className="h-px bg-slate-100 my-1"></div>
+                                  <button 
+                                    onClick={() => { handleEliminarTicket(ticket.id); setTicketMenuAbiertoId(null); }}
+                                    className="w-full text-left px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-3"
+                                  >
+                                    <span className="text-lg">🗑️</span> Eliminar Ticket
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {/* === SECCIÓN DE AGENDA LEGAL (FORMATO TABLA) === */}
+          <section className="bg-white/90 backdrop-blur-xl border border-white rounded-[2rem] shadow-xl shadow-slate-200/50 overflow-visible">
+            <div className="p-8 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex items-center justify-between rounded-t-[2rem]">
+              <div className="flex items-center gap-4">
+                <div className="bg-slate-900 text-white p-3 rounded-xl shadow-md text-xl">⚖️</div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">Agenda Legal</h3>
+                  <p className="text-sm text-slate-500 font-medium mt-1">Revisa y confirma las solicitudes de asesoría jurídica.</p>
+                </div>
+              </div>
+              <span className="bg-indigo-100 text-indigo-600 text-xs font-black uppercase tracking-wider px-4 py-1.5 rounded-full border border-indigo-200 shadow-sm shadow-indigo-100">{safeCitas.filter(c => c.estado === 'Pendiente').length} Solicitudes</span>
+            </div>
+            
+            <div className="p-2 overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[800px]">
+                <thead>
+                  <tr className="text-slate-400 text-[10px] font-black uppercase tracking-[0.15em] border-b border-slate-100">
+                    <th className="p-5 pl-8">Motivo de Asesoría</th>
+                    <th className="p-5">Solicitante</th>
+                    <th className="p-5">Estado</th>
+                    <th className="p-5 pr-8 text-right">Opciones</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {safeCitas.length === 0 ? (
+                    <tr><td colSpan={4} className="p-10 text-center text-slate-400 text-sm font-medium">No hay citas agendadas.</td></tr>
+                  ) : (
+                    safeCitas.map((cita, idx) => {
+                      const infoSolicitante = safeUsuarios.find(u => u.rut === cita.rut || u.email === cita.email);
+                      const nombreSolicitante = infoSolicitante?.full_name || cita.email || cita.rut || 'Socio Anónimo';
+
+                      return (
+                        <tr key={cita.id || idx} className="hover:bg-indigo-50/40 transition-colors group relative">
+                          <td className="p-5 pl-8">
+                            <div className="flex items-start gap-4">
+                              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 text-indigo-600 flex items-center justify-center font-black text-xs shadow-md shrink-0">
+                                📅
+                              </div>
+                              <div>
+                                <p className="font-extrabold text-slate-800 text-sm group-hover:text-indigo-600 transition-colors">
+                                  {cita.motivo}
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
+                                  {cita.fecha_reserva}
+                                </p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-5 text-xs text-slate-500 font-medium align-top">
+                            <span className="block text-slate-800 font-bold text-sm mb-0.5">{nombreSolicitante}</span>
+                          </td>
+                          <td className="p-5 align-top">
+                            <span className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-full border ${getBadgeStyle(cita.estado)}`}>
+                              {cita.estado}
+                            </span>
+                          </td>
+                          <td className="p-5 pr-8 text-right align-top">
+                            {cita.estado === 'Pendiente' ? (
+                              <button onClick={() => handleActualizarCita(cita.id, 'Confirmada')} className="text-xs font-black bg-white border border-slate-200 hover:bg-indigo-500 hover:border-indigo-500 hover:text-white text-slate-600 px-4 py-2.5 rounded-xl transition-all shadow-sm">
+                                Confirmar ✓
+                              </button>
+                            ) : (
+                              <span className="text-xs font-bold text-slate-400">Gestionada</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+        </main>
+      </div>
+
+      {/* MODAL DE RESOLUCIÓN DE TICKET */}
+      {ticketSeleccionado && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setTicketSeleccionado(null)}>
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
+            <div className="p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-black text-slate-800">Resolver Ticket</h3>
+                <p className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-wider">Notificación por correo al socio</p>
+              </div>
+              <button onClick={() => setTicketSeleccionado(null)} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors font-bold text-slate-500">✕</button>
+            </div>
+            <div className="p-8 space-y-6">
+              <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl">
+                <span className="block text-[10px] font-black uppercase tracking-widest text-blue-500 mb-1">Asunto del Socio</span>
+                <p className="font-bold text-slate-700 text-sm">{ticketSeleccionado.asunto}</p>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Detalle de la Resolución (Se enviará por correo)</label>
+                <textarea 
+                  rows={4} 
+                  value={detalleResolucion} 
+                  onChange={(e) => setDetalleResolucion(e.target.value)} 
+                  placeholder="Estimado socio, le informamos que hemos resuelto su problema..." 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 transition-all font-medium resize-none"
+                ></textarea>
+              </div>
+            </div>
+            <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3">
+              <button onClick={() => setTicketSeleccionado(null)} className="flex-1 bg-white border border-slate-200 text-slate-600 font-bold py-3.5 rounded-xl hover:bg-slate-100 transition-colors text-sm">Cancelar</button>
+              <button onClick={confirmarResolucionTicket} disabled={procesandoTicket} className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-700 hover:to-teal-600 text-white font-black py-3.5 rounded-xl transition-all shadow-lg shadow-emerald-500/25 text-sm flex justify-center items-center gap-2">
+                {procesandoTicket ? 'Procesando...' : 'Resolver y Notificar ✉️'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE EDICIÓN DE TICKET */}
+      {ticketEnEdicion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setTicketEnEdicion(null)}>
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
+            <div className="p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-black text-slate-800">Editar Ticket</h3>
+                <p className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-wider">Corrigiendo datos del requerimiento</p>
+              </div>
+              <button onClick={() => setTicketEnEdicion(null)} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors font-bold text-slate-500">✕</button>
+            </div>
+            
+            <form onSubmit={guardarEdicionTicket} className="p-8 space-y-5">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Asunto del Ticket</label>
                 <input 
-                  type="file" 
-                  accept="application/pdf" 
-                  required 
-                  onChange={(e) => setActaArchivo(e.target.files ? e.target.files[0] : null)} 
-                  className="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100 cursor-pointer" 
+                  type="text" 
+                  value={editTicketAsunto} 
+                  onChange={(e) => setEditTicketAsunto(e.target.value)} 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-bold text-slate-700"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Descripción</label>
+                <textarea 
+                  rows={4}
+                  value={editTicketDescripcion} 
+                  onChange={(e) => setEditTicketDescripcion(e.target.value)} 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-bold text-slate-700 resize-none"
+                ></textarea>
+              </div>
+
+              <div className="pt-4 flex gap-3">
+                <button type="button" onClick={() => setTicketEnEdicion(null)} className="flex-1 bg-white border border-slate-200 text-slate-600 font-bold py-3.5 rounded-xl hover:bg-slate-100 transition-colors text-sm">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={guardandoTicket} className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-700 hover:to-indigo-600 text-white font-black py-3.5 rounded-xl transition-all shadow-lg shadow-blue-500/25 text-sm">
+                  {guardandoTicket ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE EDICIÓN DE USUARIO */}
+      {usuarioEnEdicion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setUsuarioEnEdicion(null)}>
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
+            <div className="p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+              <div>
+                <h3 className="text-xl font-black text-slate-800">Editar Perfil</h3>
+                <p className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-wider">Modificando datos del socio</p>
+              </div>
+              <button onClick={() => setUsuarioEnEdicion(null)} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center hover:bg-slate-100 transition-colors font-bold text-slate-500">✕</button>
+            </div>
+            
+            <form onSubmit={guardarEdicionUsuario} className="p-8 space-y-5">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Nombre Completo</label>
+                <input 
+                  type="text" 
+                  value={editNombre} 
+                  onChange={(e) => setEditNombre(e.target.value)} 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-bold text-slate-700"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">RUT</label>
+                <input 
+                  type="text" 
+                  value={editRut} 
+                  onChange={(e) => setEditRut(e.target.value)} 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-bold text-slate-700"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Correo Electrónico</label>
+                <input 
+                  type="email" 
+                  value={editEmail} 
+                  onChange={(e) => setEditEmail(e.target.value)} 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 transition-all font-bold text-slate-700"
                 />
               </div>
 
-              <button type="submit" disabled={loadingActa} className="w-full bg-purple-600 hover:bg-purple-500 text-white font-extrabold py-3 rounded-xl transition-all shadow-lg shadow-purple-600/30 text-xs">
-                {loadingActa ? 'Subiendo PDF...' : 'Subir Acta Oficial'}
-              </button>
+              <div className="pt-4 flex gap-3">
+                <button type="button" onClick={() => setUsuarioEnEdicion(null)} className="flex-1 bg-white border border-slate-200 text-slate-600 font-bold py-3.5 rounded-xl hover:bg-slate-100 transition-colors text-sm">
+                  Cancelar
+                </button>
+                <button type="submit" disabled={guardandoUsuario} className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-700 hover:to-indigo-600 text-white font-black py-3.5 rounded-xl transition-all shadow-lg shadow-blue-500/25 text-sm">
+                  {guardandoUsuario ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
             </form>
-          </section>
-
-        </div>
-
-        {/* GESTIÓN DE ROLES (RBAC) */}
-        <section className="bg-white border border-slate-200/80 rounded-3xl p-8 shadow-xl shadow-slate-200/50">
-          <h3 className="text-lg font-black text-slate-900 mb-4">🛡️ Gestión de Roles (RBAC)</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-100 text-slate-400 text-[10px] font-black uppercase tracking-wider">
-                  <th className="p-4">RUT del Socio</th>
-                  <th className="p-4">Rol Actual</th>
-                  <th className="p-4 text-right">Acción Directiva</th>
-                </tr>
-              </thead>
-              <tbody>
-                {safeUsuarios.map((user, idx) => (
-                  <tr key={user.id || user.rut || idx} className="border-b border-slate-50 hover:bg-slate-50/50 transition">
-                    <td className="p-4 font-bold text-slate-900 text-sm">{user.rut}</td>
-                    <td className="p-4">
-                      <span className={`px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border ${user.role === 'admin' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-blue-50 text-blue-700 border-blue-200'}`}>
-                        {user.role === 'admin' ? 'Administrador' : 'Socio'}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right">
-                      <button onClick={() => handleCambiarRol(user)} className="text-xs font-bold bg-slate-900 hover:bg-blue-600 text-white px-4 py-2 rounded-xl transition shadow-sm">
-                        Cambiar a {user.role === 'admin' ? 'Socio' : 'Admin'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
-        </section>
-
-        {/* BANDEJAS DE SOPORTE Y LEGAL */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          
-          <section className="bg-white border border-slate-200/80 rounded-3xl p-8 shadow-xl shadow-slate-200/50">
-            <h3 className="text-lg font-black text-slate-900 mb-4">🎧 Tickets de Soporte</h3>
-            <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-              {safeTickets.length === 0 ? (
-                <p className="text-slate-400 text-xs font-semibold text-center py-8">No hay tickets registrados.</p>
-              ) : (
-                safeTickets.map((ticket, idx) => (
-                  <div key={idx} className="flex justify-between items-center p-5 border border-slate-200 bg-slate-50 rounded-2xl gap-4">
-                    <div>
-                      <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full border ${getBadgeStyle(ticket.estado)}`}>{ticket.estado}</span>
-                      <h4 className="font-extrabold text-slate-900 text-sm mt-2">{ticket.asunto}</h4>
-                    </div>
-                    <div>
-                      <button onClick={() => handleActualizarTicket(ticket.id, 'Resuelto')} className="text-xs font-extrabold bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl transition shadow-sm whitespace-nowrap">
-                        Resolver ✓
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-
-          <section className="bg-white border border-slate-200/80 rounded-3xl p-8 shadow-xl shadow-slate-200/50">
-            <h3 className="text-lg font-black text-slate-900 mb-4">⚖️ Solicitudes Legales</h3>
-            <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
-              {safeCitas.length === 0 ? (
-                <p className="text-slate-400 text-xs font-semibold text-center py-8">No hay solicitudes legales registradas.</p>
-              ) : (
-                safeCitas.map((cita, idx) => (
-                  <div key={idx} className="flex justify-between items-center p-5 border border-slate-200 bg-slate-50 rounded-2xl gap-4">
-                    <div>
-                      <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full border ${getBadgeStyle(cita.estado)}`}>{cita.estado}</span>
-                      <h4 className="font-extrabold text-slate-900 text-sm mt-2">{cita.motivo}</h4>
-                    </div>
-                    <div>
-                      <button onClick={() => handleActualizarCita(cita.id, 'Confirmada')} className="text-xs font-extrabold bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl transition shadow-sm whitespace-nowrap">
-                        Aprobar ✓
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-
         </div>
-
-      </main>
+      )}
     </div>
   );
 }
