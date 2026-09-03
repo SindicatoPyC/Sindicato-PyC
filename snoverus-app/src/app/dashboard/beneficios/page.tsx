@@ -84,36 +84,44 @@ export default function BeneficiosSmartPage() {
 
   // === FUNCIÓN DE SOCIO: USAR BENEFICIO CON EMAILJS ===
   const handleUsarBeneficio = async (beneficio: any) => {
-    const correoDestino = prompt(
+    // Usamos window.prompt para mayor compatibilidad, pero con un fallback si se bloquea
+    const correoDestino = window.prompt(
       `🎟️ ¿Deseas reclamar y utilizar el beneficio "${beneficio.titulo}"?\n\nConfirma tu correo electrónico para recibir el comprobante:`,
       'contacto@sindicatopyc.cl'
     );
 
-    if (!correoDestino || !correoDestino.trim()) return;
+    // Si el usuario cancela o el móvil lo bloquea, le avisamos para que no crea que es un bug
+    if (!correoDestino || !correoDestino.trim()) {
+      alert("⚠️ Acción cancelada: Se requiere un correo válido para enviar el comprobante.");
+      return;
+    }
 
     setProcesandoUso(beneficio.id);
 
     try {
+      // Blindamos los parámetros con valores por defecto por si alguno viene undefined
       const templateParams = {
         to_email: correoDestino.trim(),
-        socio_rut: socioInfo.rut,
-        beneficio_titulo: beneficio.titulo,
-        beneficio_descuento: beneficio.descuento,
-        beneficio_categoria: beneficio.categoria,
-        beneficio_descripcion: beneficio.descripcion,
+        socio_rut: socioInfo.rut || 'RUT no registrado',
+        beneficio_titulo: beneficio.titulo || 'Convenio',
+        beneficio_descuento: beneficio.descuento || 'N/A',
+        beneficio_categoria: beneficio.categoria || 'N/A',
+        beneficio_descripcion: beneficio.descripcion || 'Sin descripción adicional.',
         message: `El socio con RUT ${socioInfo.rut} ha solicitado el convenio ${beneficio.titulo} (${beneficio.descuento}).`
       };
 
-      await emailjs.send(
+      const respuesta = await emailjs.send(
         'service_thw7gfn',  // Service ID real
         'template_ot9airk', // Template ID real
         templateParams,
         'GG3tS19diXKenuD_-' // Public Key real
       );
 
-      alert(`✅ ¡Beneficio canjeado con éxito!\n\nHemos enviado un correo de confirmación y comprobante a: ${correoDestino}`);
+      if (respuesta.status === 200) {
+        alert(`✅ ¡Beneficio canjeado con éxito!\n\nHemos enviado un correo de confirmación y comprobante a: ${correoDestino}`);
+      }
     } catch (err: any) {
-      alert(`❌ Fallo al enviar el correo. Revisa la consola.`);
+      alert(`❌ Fallo al enviar el correo. Revisa la consola o tu conexión.`);
       console.error("Detalle EmailJS:", err);
     } finally {
       setProcesandoUso(null);
@@ -194,7 +202,8 @@ export default function BeneficiosSmartPage() {
     <div className="bg-slate-950 font-sans text-slate-100 min-h-screen relative w-full pb-24 overflow-hidden">
       <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-[150px] pointer-events-none"></div>
 
-      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-10 relative z-10">
+      {/* Le quitamos el 'relative z-10' al main para que no bloquee el menú en móvil */}
+      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-10">
         
         {/* ========================================================================= */}
         {/* ========================= VISTA SOCIO (DEFAULT) ========================= */}
