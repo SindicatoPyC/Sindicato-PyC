@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '../../lib/supabase';
+import emailjs from '@emailjs/browser';
 
 export default function AdminPanel() {
   const router = useRouter();
@@ -116,6 +117,28 @@ export default function AdminPanel() {
     }
   };
 
+  // 🔔 FUNCIÓN PARA NOTIFICAR A TODOS LOS SOCIOS
+  const notificarATodos = async (titulo: string, mensaje: string, tipo: string, enlace: string) => {
+    const supabase = createClient();
+    
+    // 1. Obtenemos a todos los usuarios de la base de datos
+    const { data: perfiles } = await supabase.from('profiles').select('id');
+    if (!perfiles) return;
+
+    // 2. Creamos un arreglo con una notificación para cada usuario
+    const notificaciones = perfiles.map(perfil => ({
+      user_id: perfil.id,
+      titulo: titulo,
+      mensaje: mensaje,
+      tipo: tipo,
+      enlace: enlace,
+      leido: false
+    }));
+
+    // 3. Insertamos todas las notificaciones de golpe
+    await supabase.from('notificaciones').insert(notificaciones);
+  };
+
   // HANDLERS GENERALES
   const handlePublicarNoticia = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,9 +146,13 @@ export default function AdminPanel() {
     try {
       const supabase = createClient();
       await supabase.from('comunicados').insert([{ titulo: tituloNoticia, contenido: contenidoNoticia }]);
+      
+      // 🔔 Disparar notificación global
+      await notificarATodos('📢 Nuevo Comunicado', tituloNoticia, 'noticia', '/dashboard');
+
       setTituloNoticia(''); setContenidoNoticia('');
       fetchEnterpriseData();
-      alert('📢 ¡Comunicado publicado!');
+      alert('📢 ¡Comunicado publicado y socios notificados!');
     } catch (err: any) { alert('Error: ' + err.message); } finally { setLoadingNoticia(false); }
   };
 
@@ -135,9 +162,13 @@ export default function AdminPanel() {
     try {
       const supabase = createClient();
       await supabase.from('asambleas_votaciones').insert([{ titulo: tituloAsamblea, estado: 'Abierta' }]);
+      
+      // 🔔 Disparar notificación global
+      await notificarATodos('🗳️ Nueva Votación Abierta', tituloAsamblea, 'asamblea', '/dashboard/encuestas');
+
       setTituloAsamblea('');
       fetchEnterpriseData();
-      alert('🗳️ ¡Asamblea abierta!');
+      alert('🗳️ ¡Asamblea abierta y socios notificados!');
     } catch (err: any) { alert('Error: ' + err.message); } finally { setLoadingAsamblea(false); }
   };
 
@@ -153,9 +184,13 @@ export default function AdminPanel() {
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('actas').getPublicUrl(fileName);
       await supabase.from('libro_actas').insert([{ titulo: actaTitulo, tipo_asamblea: actaTipo, fecha_reunion: actaFecha || new Date().toISOString().split('T')[0], resumen_acuerdos: actaResumen, url_acta_pdf: publicUrl }]);
+      
+      // 🔔 Disparar notificación global
+      await notificarATodos('📜 Nueva Acta Publicada', `Se ha subido el documento: ${actaTitulo}`, 'acta', '/dashboard/actas');
+
       setActaTitulo(''); setActaTipo('Ordinaria'); setActaFecha(''); setActaResumen(''); setActaArchivo(null);
       fetchEnterpriseData();
-      alert('📜 ¡Acta subida!');
+      alert('📜 ¡Acta subida y socios notificados!');
     } catch (err: any) { alert('Error: ' + err.message); } finally { setLoadingActa(false); }
   };
 
@@ -334,39 +369,38 @@ export default function AdminPanel() {
     setProcesandoTicket(true);
 
     try {
-      const asunto = `Resolución de Ticket: ${ticketSeleccionado.asunto}`;
-      const cuerpo = `Estimado/a ${nombreDestino},\n\nSu ticket de soporte ha sido resuelto por la directiva.\n\nDetalle de la resolución:\n${detalleResolucion}\n\nAtentamente,\nDirectiva Sindicato PYC`;
+      // 2. CONFIGURAR VARIABLES PARA EMAILJS (Con los nombres correctos de la plantilla)
+      const templateParams = {
+        to_email: correoDestino.trim(),
+        rutUsuario: nombreDestino,
+        tipo: 'Resolución de Directiva',
+        asunto: ticketSeleccionado.asunto,
+        mensaje: detalleResolucion
+      };
 
-      const res = await fetch('/api/send-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          to: correoDestino,
-          name: nombreDestino,
-          subject: asunto,
-          message: cuerpo
-        })
-      });
+      // 3. ENVIAR CORREO VÍA EMAILJS
+      await emailjs.send(
+        'service_thw7gfn',       // Service ID
+        'template_93ch74j',      // Template ID (Feedback Request)
+        templateParams,
+        'GG3tS19diXKenuD_-'      // Public Key
+      );
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error?.message || errorData.error || "Fallo la conexión con la API de correos.");
-      }
-
+      // 4. ACTUALIZAR BASE DE DATOS
       const supabase = createClient();
       const { error } = await supabase.from('tickets_soporte').update({ estado: 'Resuelto' }).eq('id', ticketSeleccionado.id);
       
       if (!error) {
         setTickets(tickets.map(t => t.id === ticketSeleccionado.id ? { ...t, estado: 'Resuelto' } : t));
-        alert("✅ Correo enviado exitosamente y ticket marcado como resuelto.");
+        alert(`✅ Correo enviado a ${correoDestino} y ticket marcado como resuelto.`);
         setTicketSeleccionado(null);
       } else {
         alert("⚠️ El correo se envió al socio, pero hubo un error al actualizar el estado en Supabase: " + error.message);
       }
 
     } catch (err: any) {
-      alert("❌ Error al enviar el correo: " + err.message + "\n\nEl ticket NO ha sido cerrado y sigue PENDIENTE.");
-      console.error(err);
+      alert("❌ Error al enviar el correo. Revisa la consola.");
+      console.error("Detalle EmailJS:", err);
     } finally {
       setProcesandoTicket(false);
     }

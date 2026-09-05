@@ -9,6 +9,9 @@ export default function Navbar() {
   const router = useRouter();
   const [userName, setUserName] = useState("Socio PYC");
   const [userRole, setUserRole] = useState("Socio Activo");
+  
+  // 📱 Estado para controlar el menú móvil
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -53,23 +56,23 @@ export default function Navbar() {
   };
 
   return (
-    <nav className="bg-[#0f172a] border-b border-slate-800 text-slate-100 w-full z-50 sticky top-0 shadow-lg">
+    <nav className="bg-[#0f172a] border-b border-slate-800 text-slate-100 w-full z-[100] sticky top-0 shadow-lg">
       <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-20">
           
           {/* Lado Izquierdo: Tu Logo Original y Título */}
-          <div className="flex-shrink-0 flex items-center gap-4 w-1/4">
+          <div className="flex-shrink-0 flex items-center gap-4 w-auto lg:w-1/4">
             <img 
               src="/logopyf.jpeg" 
               alt="Sindicato PYC" 
               className="h-12 w-12 rounded-full object-contain border-2 border-slate-700 shadow-sm" 
             />
-            <Link href="/dashboard" className="font-black text-xl tracking-tight text-white hover:opacity-80 transition hidden xl:block">
+            <Link href="/dashboard" className="font-black text-xl tracking-tight text-white hover:opacity-80 transition hidden sm:block">
               Sindicato <span className="text-blue-500">PYC</span>
             </Link>
           </div>
 
-          {/* CENTRO: Menú de Navegación PRO (Mega Menú) */}
+          {/* CENTRO: Menú de Navegación PRO (Mega Menú Desktop) */}
           <div className="hidden lg:flex flex-1 items-center justify-center gap-8">
             <Link href="/dashboard" className="text-sm font-bold text-slate-300 hover:text-white transition">Inicio</Link>
             <Link href="/dashboard/beneficios" className="text-sm font-bold text-slate-300 hover:text-white transition">Beneficios</Link>
@@ -138,7 +141,7 @@ export default function Navbar() {
           </div>
 
           {/* Lado Derecho: Controles y Perfil Dinámico */}
-          <div className="flex items-center justify-end gap-4 sm:gap-6 w-1/4">
+          <div className="flex items-center justify-end gap-3 sm:gap-6 w-auto lg:w-1/4">
             
             <Campanita />
 
@@ -155,7 +158,7 @@ export default function Navbar() {
 
             <button 
               onClick={handleLogout}
-              className="text-slate-400 hover:text-red-400 transition ml-2 p-2 rounded-xl hover:bg-slate-800/50 cursor-pointer"
+              className="hidden sm:block text-slate-400 hover:text-red-400 transition p-2 rounded-xl hover:bg-slate-800/50 cursor-pointer"
               title="Cerrar Sesión"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -163,14 +166,58 @@ export default function Navbar() {
               </svg>
             </button>
 
-            {/* Menú Hamburguesa (Móviles) */}
-            <button className="lg:hidden text-slate-400 hover:text-white ml-2 cursor-pointer">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
+            {/* 📱 Botón Menú Hamburguesa (Móviles) PROGRAMADO */}
+            <button 
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              className="lg:hidden text-slate-300 hover:text-white p-2 rounded-xl hover:bg-slate-800 cursor-pointer transition-colors relative z-[110]"
+            >
+              {isMobileMenuOpen ? (
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              )}
             </button>
             
           </div>
+        </div>
+      </div>
+
+      {/* 📱 PANEL DESPLEGABLE MÓVIL */}
+      <div className={`lg:hidden absolute top-full left-0 w-full bg-[#0f172a]/95 backdrop-blur-xl border-b border-slate-800 shadow-2xl transition-all duration-300 overflow-hidden z-[90] ${isMobileMenuOpen ? 'max-h-[85vh] opacity-100 py-4' : 'max-h-0 opacity-0 py-0'}`}>
+        <div className="flex flex-col px-4 space-y-2 overflow-y-auto max-h-[75vh] pb-6 hide-scrollbar">
+          <Link href="/dashboard" onClick={() => setIsMobileMenuOpen(false)} className="text-white font-bold text-sm bg-slate-800/50 hover:bg-slate-800 p-4 rounded-2xl border border-slate-700/50">🏠 Inicio</Link>
+          <Link href="/dashboard/beneficios" onClick={() => setIsMobileMenuOpen(false)} className="text-white font-bold text-sm bg-slate-800/50 hover:bg-slate-800 p-4 rounded-2xl border border-slate-700/50">🎁 Beneficios</Link>
+          <Link href="/dashboard/chat-legal" onClick={() => setIsMobileMenuOpen(false)} className="text-blue-400 font-bold text-sm bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 p-4 rounded-2xl">🤖 Asistente Legal</Link>
+
+          <div className="h-px bg-slate-800 my-2"></div>
+          <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">Módulos del Sindicato</span>
+
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <Link href="/dashboard/credencial" onClick={() => setIsMobileMenuOpen(false)} className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 p-3 rounded-2xl flex flex-col gap-1"><span className="text-xl">🪪</span><span className="text-xs font-bold text-slate-300">Credencial</span></Link>
+            <Link href="/dashboard/actas" onClick={() => setIsMobileMenuOpen(false)} className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 p-3 rounded-2xl flex flex-col gap-1"><span className="text-xl">📜</span><span className="text-xs font-bold text-slate-300">Actas</span></Link>
+            <Link href="/dashboard/finanzas" onClick={() => setIsMobileMenuOpen(false)} className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 p-3 rounded-2xl flex flex-col gap-1"><span className="text-xl">💰</span><span className="text-xs font-bold text-slate-300">Finanzas</span></Link>
+            <Link href="/dashboard/asistencia" onClick={() => setIsMobileMenuOpen(false)} className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 p-3 rounded-2xl flex flex-col gap-1"><span className="text-xl">📅</span><span className="text-xs font-bold text-slate-300">Asistencia</span></Link>
+            <Link href="/dashboard/encuestas" onClick={() => setIsMobileMenuOpen(false)} className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 p-3 rounded-2xl flex flex-col gap-1"><span className="text-xl">📊</span><span className="text-xs font-bold text-slate-300">Encuestas</span></Link>
+            <Link href="/dashboard/negociacion" onClick={() => setIsMobileMenuOpen(false)} className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 p-3 rounded-2xl flex flex-col gap-1"><span className="text-xl">🤝</span><span className="text-xs font-bold text-slate-300">Negociación</span></Link>
+            <Link href="/dashboard/solidario" onClick={() => setIsMobileMenuOpen(false)} className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 p-3 rounded-2xl flex flex-col gap-1"><span className="text-xl">🫂</span><span className="text-xs font-bold text-slate-300">Solidario</span></Link>
+            <Link href="/dashboard/soporte" onClick={() => setIsMobileMenuOpen(false)} className="bg-slate-800/50 hover:bg-slate-800 border border-slate-700/50 p-3 rounded-2xl flex flex-col gap-1"><span className="text-xl">🎧</span><span className="text-xs font-bold text-slate-300">Soporte</span></Link>
+          </div>
+
+          <div className="h-px bg-slate-800 my-2"></div>
+          
+          {userRole === 'Administrador' && (
+            <Link href="/dashboard/admin" onClick={() => setIsMobileMenuOpen(false)} className="text-center font-bold text-sm bg-rose-900/50 hover:bg-rose-800 text-rose-300 border border-rose-800 p-4 rounded-2xl">
+              ⚙️ Panel de Administración
+            </Link>
+          )}
+
+          <button onClick={() => { setIsMobileMenuOpen(false); handleLogout(); }} className="w-full text-center font-bold text-sm bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 p-4 rounded-2xl mt-2">
+            Cerrar Sesión
+          </button>
         </div>
       </div>
     </nav>

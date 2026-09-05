@@ -83,13 +83,13 @@ export default function SoportePage() {
       return; 
     } 
 
-    // 2. Enviar Correo con EmailJS
+    // 2. Enviar Correo con EmailJS (ALINEADO CON LA PLANTILLA ORIGINAL)
     try {
       await emailjs.send(
         'service_thw7gfn',    // Tu Service ID
-        'template_93ch74j',   // Tu Template ID
+        'template_93ch74j',   // Tu Template ID (Feedback Request)
         {
-          user_email: email,
+          to_email: email,
           rutUsuario: rutUsuario,
           tipo: tipo,
           asunto: asunto,
@@ -133,7 +133,7 @@ export default function SoportePage() {
 
       if (error) throw error; // Si la caché falla, el código se va al catch de abajo y el correo no se envía.
 
-      // 2. Enviar correo al socio de manera obligatoria y con alertas
+      // 2. Enviar correo al socio de manera obligatoria y con alertas (ALINEADO CON LA PLANTILLA ORIGINAL)
       if (respuestaAdmin.trim() !== '') {
         try {
           const correoSocio = ticketEditando.usuario_rut; // El correo está almacenado en esta columna
@@ -142,7 +142,7 @@ export default function SoportePage() {
             'service_thw7gfn',
             'template_93ch74j', 
             {
-              user_email: correoSocio, 
+              to_email: correoSocio, 
               rutUsuario: correoSocio,
               tipo: 'Respuesta de Directiva',
               asunto: `Resolución de tu Ticket #${ticketEditando.id}`,

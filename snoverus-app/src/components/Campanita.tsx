@@ -1,41 +1,58 @@
 "use client";
 import { useState, useEffect } from "react";
 import { createClient } from "../app/lib/supabase";
+import Link from "next/link";
 
 export default function Campanita() {
   const [notificaciones, setNotificaciones] = useState<any[]>([]);
   const [mostrarMenu, setMostrarMenu] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const supabase = createClient();
 
   useEffect(() => {
-    cargarNotificaciones();
+    const initCampanita = async () => {
+      // 1. Identificar al usuario actual
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        setUserId(user.id);
+        cargarNotificaciones(user.id);
 
-    // 🛡️ Corrección de sintaxis en el generador de string aleatorio
-    const channelName = `notificaciones_${Math.random().toString(36).substring(2, 9)}`;
-    
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notificaciones_sindicato' },
-        (payload) => {
-          setNotificaciones((prev) => [payload.new, ...prev]);
-        }
-      )
-      .subscribe();
+        // 2. Escuchar solo las notificaciones de este usuario en la tabla NUEVA
+        const channelName = `notificaciones_${user.id}`;
+        const channel = supabase
+          .channel(channelName)
+          .on(
+            'postgres_changes',
+            { 
+              event: 'INSERT', 
+              schema: 'public', 
+              table: 'notificaciones', // 👈 Apuntando a la tabla correcta
+              filter: `user_id=eq.${user.id}` // 👈 Solo alertas de este usuario
+            },
+            (payload) => {
+              setNotificaciones((prev) => [payload.new, ...prev]);
+            }
+          )
+          .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
+        return () => {
+          supabase.removeChannel(channel);
+        };
+      }
     };
+
+    initCampanita();
   }, []);
 
-  const cargarNotificaciones = async () => {
+  const cargarNotificaciones = async (uid: string) => {
     try {
       const { data, error } = await supabase
-        .from('notificaciones_sindicato')
+        .from('notificaciones') // 👈 Apuntando a la tabla correcta
         .select('*')
+        .eq('user_id', uid)
         .order('created_at', { ascending: false })
-        .limit(5);
+        .limit(10); // Cargamos las últimas 10
 
       if (error) throw error;
       if (data) setNotificaciones(data);
@@ -46,19 +63,26 @@ export default function Campanita() {
 
   const marcarComoLeidas = async () => {
     setMostrarMenu(!mostrarMenu);
+    
+    if (!userId) return;
+
     try {
+      // Actualizamos a 'leido: true' en la base de datos
       await supabase
-        .from('notificaciones_sindicato')
-        .update({ leida: true })
-        .eq('leida', false);
+        .from('notificaciones')
+        .update({ leido: true }) // 👈 Usando el nombre correcto de la columna
+        .eq('user_id', userId)
+        .eq('leido', false);
       
-      setNotificaciones(notificaciones.map(n => ({ ...n, leida: true })));
+      // Actualizamos visualmente al instante
+      setNotificaciones(notificaciones.map(n => ({ ...n, leido: true })));
     } catch (err) {
       console.error("Error al actualizar notificaciones:", err);
     }
   };
 
-  const noLeidasCount = notificaciones.filter(n => !n.leida).length;
+  // Contamos usando la columna correcta 'leido'
+  const noLeidasCount = notificaciones.filter(n => !n.leido).length;
 
   return (
     <div className="relative">
@@ -78,7 +102,7 @@ export default function Campanita() {
       </button>
 
       {mostrarMenu && (
-        <div className="absolute right-0 mt-3 w-80 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-50">
+        <div className="absolute right-0 mt-3 w-80 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fade-in-up">
           <div className="p-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
             <span className="text-xs font-black uppercase tracking-wider text-slate-300">Centro de Alertas</span>
             <span className="text-[10px] bg-blue-600/20 text-blue-400 font-extrabold px-2 py-0.5 rounded-full">
@@ -86,14 +110,18 @@ export default function Campanita() {
             </span>
           </div>
 
-          <div className="max-h-72 overflow-y-auto divide-y divide-slate-800/60">
+          <div className="max-h-72 overflow-y-auto divide-y divide-slate-800/60 hide-scrollbar">
             {notificaciones.length === 0 ? (
               <div className="p-6 text-center text-xs text-slate-500 font-semibold">
                 No hay notificaciones nuevas.
               </div>
             ) : (
               notificaciones.map((n) => (
-                <div key={n.id} className={`p-4 hover:bg-slate-800/40 transition ${!n.leida ? 'bg-slate-800/20' : ''}`}>
+                <Link 
+                  href={n.enlace || '/dashboard'} 
+                  key={n.id} 
+                  className={`block p-4 hover:bg-slate-800/40 transition ${!n.leido ? 'bg-blue-900/10 border-l-2 border-blue-500' : ''}`}
+                >
                   <div className="flex items-center justify-between mb-1">
                     <h4 className="text-xs font-bold text-white">{n.titulo}</h4>
                     <span className="text-[9px] text-slate-500">
@@ -101,7 +129,7 @@ export default function Campanita() {
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 leading-relaxed">{n.mensaje}</p>
-                </div>
+                </Link>
               ))
             )}
           </div>
