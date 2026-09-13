@@ -29,14 +29,24 @@ export default function AdminPanel() {
   // Estados para Datos
   const [usuarios, setUsuarios] = useState<any[]>([]);
   const [tickets, setTickets] = useState<any[]>([]);
-  const [votos, setVotos] = useState<any[]>([]);
+  const [encuestasData, setEncuestasData] = useState<any[]>([]);
   const [citas, setCitas] = useState<any[]>([]);
+  const [postulaciones, setPostulaciones] = useState<any[]>([]);
+  
+  // NUEVO: Estados del Fondo Solidario y Negociaciones Archivadas
+  const [fondoRecaudado, setFondoRecaudado] = useState(0); 
+  const [metaFondo, setMetaFondo] = useState(1000000); 
+  const [negociacionesArchivadas, setNegociacionesArchivadas] = useState<any[]>([]);
   const [loadingDatos, setLoadingDatos] = useState(true);
 
   // Estados para Modal de Resolución de Ticket
   const [ticketSeleccionado, setTicketSeleccionado] = useState<any>(null);
   const [detalleResolucion, setDetalleResolucion] = useState('');
   const [procesandoTicket, setProcesandoTicket] = useState(false);
+
+  // Estado para procesar postulaciones
+  const [procesandoPostulacion, setProcesandoPostulacion] = useState<number | null>(null);
+  const [procesandoTodas, setProcesandoTodas] = useState(false);
 
   // Estados para Modal de Edición de Ticket
   const [ticketEnEdicion, setTicketEnEdicion] = useState<any>(null);
@@ -93,23 +103,40 @@ export default function AdminPanel() {
     try {
       const supabase = createClient();
       
-      const { data: usersData, error: userError } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
-        
-      if (!userError && Array.isArray(usersData)) {
-        setUsuarios(usersData);
-      }
+      const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+      if (Array.isArray(usersData)) setUsuarios(usersData);
       
       const { data: ticketsData } = await supabase.from('tickets_soporte').select('*').order('created_at', { ascending: false });
       if (Array.isArray(ticketsData)) setTickets(ticketsData);
       
-      const { data: votosData } = await supabase.from('votos_registrados').select('*');
-      if (Array.isArray(votosData)) setVotos(votosData);
+      const { data: encData } = await supabase.from('encuestas_clima').select('*');
+      if (Array.isArray(encData)) setEncuestasData(encData);
       
       const { data: citasData } = await supabase.from('agenda_legal').select('*').order('fecha_reserva', { ascending: false });
       if (Array.isArray(citasData)) setCitas(citasData);
+
+      const { data: postData } = await supabase.from('postulaciones').select('*').eq('estado', 'Pendiente').order('created_at', { ascending: false });
+      if (Array.isArray(postData)) setPostulaciones(postData);
+
+      // Sincronización del Fondo Solidario y su Meta
+      const { data: aportesData } = await supabase.from('fondo_aportes').select('monto').eq('estado', 'Aprobado');
+      if (aportesData) setFondoRecaudado(aportesData.reduce((sum, a) => sum + Number(a.monto), 0));
+
+      const { data: metaData } = await supabase.from('fondo_meta').select('monto_meta').eq('id', 1).single();
+      if (metaData) setMetaFondo(metaData.monto_meta);
+
+      // Sincronización de las Negociaciones Archivadas + Sus Hitos en un Join
+      const { data: negData } = await supabase
+        .from('negociacion_info')
+        .select(`
+          *,
+          hitos_negociacion (*)
+        `)
+        .eq('estado', 'Archivada')
+        .order('id', { ascending: false });
+        
+      if (Array.isArray(negData)) setNegociacionesArchivadas(negData);
+
     } catch (err) {
       console.error("Error cargando datos:", err);
     } finally {
@@ -117,15 +144,11 @@ export default function AdminPanel() {
     }
   };
 
-  // 🔔 FUNCIÓN PARA NOTIFICAR A TODOS LOS SOCIOS
   const notificarATodos = async (titulo: string, mensaje: string, tipo: string, enlace: string) => {
     const supabase = createClient();
-    
-    // 1. Obtenemos a todos los usuarios de la base de datos
     const { data: perfiles } = await supabase.from('profiles').select('id');
     if (!perfiles) return;
 
-    // 2. Creamos un arreglo con una notificación para cada usuario
     const notificaciones = perfiles.map(perfil => ({
       user_id: perfil.id,
       titulo: titulo,
@@ -135,21 +158,16 @@ export default function AdminPanel() {
       leido: false
     }));
 
-    // 3. Insertamos todas las notificaciones de golpe
     await supabase.from('notificaciones').insert(notificaciones);
   };
 
-  // HANDLERS GENERALES
   const handlePublicarNoticia = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoadingNoticia(true);
     try {
       const supabase = createClient();
       await supabase.from('comunicados').insert([{ titulo: tituloNoticia, contenido: contenidoNoticia }]);
-      
-      // 🔔 Disparar notificación global
       await notificarATodos('📢 Nuevo Comunicado', tituloNoticia, 'noticia', '/dashboard');
-
       setTituloNoticia(''); setContenidoNoticia('');
       fetchEnterpriseData();
       alert('📢 ¡Comunicado publicado y socios notificados!');
@@ -161,14 +179,18 @@ export default function AdminPanel() {
     setLoadingAsamblea(true);
     try {
       const supabase = createClient();
-      await supabase.from('asambleas_votaciones').insert([{ titulo: tituloAsamblea, estado: 'Abierta' }]);
-      
-      // 🔔 Disparar notificación global
+      await supabase.from('encuestas_clima').insert([{ 
+        titulo: tituloAsamblea, 
+        categoria: 'Asamblea',
+        opcion_a: 'A Favor',
+        opcion_b: 'En Contra',
+        votos_a: 0,
+        votos_b: 0
+      }]);
       await notificarATodos('🗳️ Nueva Votación Abierta', tituloAsamblea, 'asamblea', '/dashboard/encuestas');
-
       setTituloAsamblea('');
       fetchEnterpriseData();
-      alert('🗳️ ¡Asamblea abierta y socios notificados!');
+      alert('🗳️ ¡Votación generada correctamente en el módulo de Encuestas y socios notificados!');
     } catch (err: any) { alert('Error: ' + err.message); } finally { setLoadingAsamblea(false); }
   };
 
@@ -184,10 +206,7 @@ export default function AdminPanel() {
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('actas').getPublicUrl(fileName);
       await supabase.from('libro_actas').insert([{ titulo: actaTitulo, tipo_asamblea: actaTipo, fecha_reunion: actaFecha || new Date().toISOString().split('T')[0], resumen_acuerdos: actaResumen, url_acta_pdf: publicUrl }]);
-      
-      // 🔔 Disparar notificación global
       await notificarATodos('📜 Nueva Acta Publicada', `Se ha subido el documento: ${actaTitulo}`, 'acta', '/dashboard/actas');
-
       setActaTitulo(''); setActaTipo('Ordinaria'); setActaFecha(''); setActaResumen(''); setActaArchivo(null);
       fetchEnterpriseData();
       alert('📜 ¡Acta subida y socios notificados!');
@@ -199,21 +218,12 @@ export default function AdminPanel() {
     const nuevoRol = (rolActual === 'admin' || rolActual === 'administrador') ? 'socio' : 'admin';
     try {
       const supabase = createClient();
-      const { error } = await supabase
-        .from('profiles')
-        .update({ role: nuevoRol })
-        .eq('id', user.id);
-
+      const { error } = await supabase.from('profiles').update({ role: nuevoRol }).eq('id', user.id);
       if (!error) {
         setUsuarios(usuarios.map(u => (u.id === user.id) ? { ...u, role: nuevoRol } : u));
         alert(`✅ Rol actualizado exitosamente a ${nuevoRol.toUpperCase()}`);
-      } else {
-        alert('❌ Error de Supabase: ' + error.message);
-      }
-    } catch (err: any) { 
-      alert('❌ Error inesperado: ' + err.message);
-      console.error(err); 
-    }
+      } else alert('❌ Error de Supabase: ' + error.message);
+    } catch (err: any) { console.error(err); }
   };
 
   const handleEditarUsuario = (user: any) => {
@@ -235,39 +245,23 @@ export default function AdminPanel() {
       }).eq('id', usuarioEnEdicion.id);
 
       if (!error) {
-        setUsuarios(usuarios.map(u => (u.id === usuarioEnEdicion.id) 
-          ? { ...u, full_name: editNombre, rut: editRut, email: editEmail } 
-          : u
-        ));
+        setUsuarios(usuarios.map(u => (u.id === usuarioEnEdicion.id) ? { ...u, full_name: editNombre, rut: editRut, email: editEmail } : u));
         setUsuarioEnEdicion(null);
         alert('✅ Perfil actualizado exitosamente.');
-      } else {
-        alert('❌ Error al actualizar perfil: ' + error.message);
-      }
-    } catch (err: any) {
-      alert('❌ Excepción: ' + err.message);
-      console.error(err);
-    } finally {
-      setGuardandoUsuario(false);
-    }
+      } else alert('❌ Error al actualizar perfil: ' + error.message);
+    } catch (err: any) { console.error(err); } finally { setGuardandoUsuario(false); }
   };
 
   const handleEliminarUsuario = async (user: any) => {
-    const confirmacion = window.confirm(`⚠️ ESTÁS A PUNTO DE ELIMINAR UN SOCIO\n\n¿Estás seguro de que deseas eliminar permanentemente a ${user.full_name || user.rut} del padrón?`);
-    if (!confirmacion) return;
-
+    if (!window.confirm(`⚠️ ESTÁS A PUNTO DE ELIMINAR UN SOCIO\n\n¿Estás seguro de que deseas eliminar permanentemente a ${user.full_name || user.rut} del padrón?`)) return;
     try {
       const supabase = createClient();
       const { error } = await supabase.from('profiles').delete().eq('id', user.id);
       if (!error) {
         setUsuarios(usuarios.filter(u => u.id !== user.id));
         alert('✅ Usuario eliminado correctamente del padrón.');
-      } else {
-        alert('❌ Error al eliminar: ' + error.message);
-      }
-    } catch (err: any) {
-      console.error(err);
-    }
+      } else alert('❌ Error al eliminar: ' + error.message);
+    } catch (err: any) { console.error(err); }
   };
 
   const handleActualizarCita = async (id: number, nuevoEstado: string) => {
@@ -278,7 +272,103 @@ export default function AdminPanel() {
     } catch (err: any) {}
   };
 
-  // --- LÓGICA DE GESTIÓN Y RESOLUCIÓN DE TICKETS ---
+  const procesarPostulanteSupabase = async (postulacion: any) => {
+    const supabase = createClient();
+    const cleanRut = postulacion.rut.replace(/[^0-9kK]/g, '');
+    const ultimosDigitos = cleanRut.length > 4 ? cleanRut.slice(-4) : '1234';
+    const passwordTemporal = `Pyc${ultimosDigitos}.2026`;
+
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: postulacion.email,
+      password: passwordTemporal,
+    });
+
+    if (authError) {
+      console.warn("Aviso Auth (cuenta posiblemente existente):", authError.message);
+    }
+
+    if (authData?.user) {
+       await supabase.from('profiles').upsert({
+         id: authData.user.id,
+         rut: postulacion.rut,
+         full_name: postulacion.full_name,
+         email: postulacion.email,
+         role: 'socio'
+       });
+    } else {
+       await supabase.from('profiles').upsert({
+         rut: postulacion.rut,
+         full_name: postulacion.full_name,
+         email: postulacion.email,
+         role: 'socio'
+       }, { onConflict: 'rut' });
+    }
+
+    await supabase.from('postulaciones').update({ estado: 'Aprobada' }).eq('id', postulacion.id);
+
+    const templateParams = {
+      to_email: postulacion.email,
+      rutUsuario: postulacion.full_name,
+      tipo: 'Aprobación de Membresía',
+      asunto: '¡Bienvenido al Sindicato PYC!',
+      mensaje: `Hola ${postulacion.full_name},\n\nTu postulación ha sido aprobada por la directiva.\n\nPuedes acceder al portal con las siguientes credenciales:\n\nRUT: ${postulacion.rut}\nContraseña: ${passwordTemporal}\n\nTe recomendamos cambiar tu contraseña en tu primer ingreso.`
+    };
+
+    try {
+      await emailjs.send('service_thw7gfn', 'template_93ch74j', templateParams, 'GG3tS19diXKenuD_-');
+    } catch (emailErr) {
+      console.error("Fallo de EmailJS:", emailErr);
+      throw new Error("Se aprobó en base de datos, pero EmailJS no pudo despachar el correo.");
+    }
+  };
+
+  const handleAprobarPostulacion = async (postulacion: any) => {
+    if (!window.confirm(`¿Aprobar al socio ${postulacion.full_name}? Se enviarán sus credenciales a ${postulacion.email}.`)) return;
+
+    setProcesandoPostulacion(postulacion.id);
+    try {
+      await procesarPostulanteSupabase(postulacion);
+      setPostulaciones(postulaciones.filter(p => p.id !== postulacion.id));
+      alert(`✅ Socio aprobado exitosamente. Correo enviado a ${postulacion.email}.`);
+      fetchEnterpriseData(); 
+    } catch (err: any) {
+      alert(`❌ Error durante la aprobación: ${err.message}`);
+    } finally {
+      setProcesandoPostulacion(null);
+    }
+  };
+
+  const handleAprobarTodas = async () => {
+    if (!window.confirm(`¿Estás seguro de que deseas APROBAR a los ${postulaciones.length} postulantes pendientes?\n\nSe crearán sus cuentas y se enviarán los correos de manera automática.`)) return;
+
+    setProcesandoTodas(true);
+    let aprobados = 0;
+    let errores = 0;
+
+    for (const post of postulaciones) {
+      try {
+        await procesarPostulanteSupabase(post);
+        aprobados++;
+      } catch (err) {
+        console.error(`Error aprobando a ${post.email}:`, err);
+        errores++;
+      }
+    }
+
+    alert(`Proceso masivo finalizado.\n✅ Aprobados y notificados: ${aprobados}\n❌ Errores: ${errores}`);
+    setProcesandoTodas(false);
+    fetchEnterpriseData();
+  };
+
+  const handleRechazarPostulacion = async (id: number) => {
+    if (!window.confirm("¿Seguro que deseas rechazar y eliminar esta postulación?")) return;
+    try {
+      const supabase = createClient();
+      await supabase.from('postulaciones').update({ estado: 'Rechazada' }).eq('id', id);
+      setPostulaciones(postulaciones.filter(p => p.id !== id));
+    } catch (err) {}
+  };
+
   const abrirModalResolucion = (ticket: any) => {
     setTicketSeleccionado(ticket);
     setDetalleResolucion('');
@@ -301,20 +391,11 @@ export default function AdminPanel() {
       }).eq('id', ticketEnEdicion.id);
 
       if (!error) {
-        setTickets(tickets.map(t => (t.id === ticketEnEdicion.id) 
-          ? { ...t, asunto: editTicketAsunto, descripcion: editTicketDescripcion } 
-          : t
-        ));
+        setTickets(tickets.map(t => (t.id === ticketEnEdicion.id) ? { ...t, asunto: editTicketAsunto, descripcion: editTicketDescripcion } : t));
         setTicketEnEdicion(null);
         alert('✅ Ticket actualizado exitosamente.');
-      } else {
-        alert('❌ Error al actualizar ticket: ' + error.message);
-      }
-    } catch (err: any) {
-      alert('❌ Excepción: ' + err.message);
-    } finally {
-      setGuardandoTicket(false);
-    }
+      } else alert('❌ Error al actualizar ticket: ' + error.message);
+    } catch (err: any) { alert('❌ Excepción: ' + err.message); } finally { setGuardandoTicket(false); }
   };
 
   const handleEliminarTicket = async (id: string | number) => {
@@ -322,71 +403,38 @@ export default function AdminPanel() {
     try {
       const supabase = createClient();
       const { error } = await supabase.from('tickets_soporte').delete().eq('id', id);
-      if (!error) {
-        setTickets(tickets.filter(t => t.id !== id));
-      } else {
-        alert("❌ Error al eliminar el ticket: " + error.message);
-      }
-    } catch (err: any) {
-      console.error(err);
-    }
+      if (!error) setTickets(tickets.filter(t => t.id !== id));
+      else alert("❌ Error al eliminar el ticket: " + error.message);
+    } catch (err: any) { console.error(err); }
   };
 
   const handleActualizarEstadoTicket = async (id: string | number, nuevoEstado: string) => {
     try {
       const supabase = createClient();
       const { error } = await supabase.from('tickets_soporte').update({ estado: nuevoEstado }).eq('id', id);
-      if (!error) {
-        setTickets(tickets.map(t => t.id === id ? { ...t, estado: nuevoEstado } : t));
-      } else {
-        alert("❌ Error al cambiar el estado: " + error.message);
-      }
-    } catch (err: any) {
-      console.error(err);
-    }
+      if (!error) setTickets(tickets.map(t => t.id === id ? { ...t, estado: nuevoEstado } : t));
+      else alert("❌ Error al cambiar el estado: " + error.message);
+    } catch (err: any) { console.error(err); }
   };
 
   const confirmarResolucionTicket = async () => {
     if (!detalleResolucion.trim()) return alert("Debes ingresar un detalle de resolución.");
     
-    // 1. OBTENER Y VALIDAR EL CORREO ANTES DE TOCAR LA BASE DE DATOS
     const usuarioAsociado = usuarios.find(u => u.id === ticketSeleccionado.user_id || u.rut === ticketSeleccionado.rut);
     let correoDestino = ticketSeleccionado.email || usuarioAsociado?.email;
     const nombreDestino = usuarioAsociado?.full_name || ticketSeleccionado.nombre || 'Socio Anónimo';
 
-    // FALLBACK: Si no hay correo, lo pedimos manualmente
     if (!correoDestino || correoDestino === 'No especificado') {
-      const correoManual = window.prompt(
-        "⚠️ Este ticket es anónimo o no tiene correo registrado.\n\nPor favor, ingresa el correo del socio manualmente para notificarle:"
-      );
-
-      if (!correoManual || !correoManual.trim()) {
-        return alert("❌ Operación cancelada. El ticket sigue PENDIENTE porque se necesita un correo para notificar.");
-      }
+      const correoManual = window.prompt("⚠️ Este ticket es anónimo o no tiene correo registrado.\n\nPor favor, ingresa el correo del socio manualmente para notificarle:");
+      if (!correoManual || !correoManual.trim()) return alert("❌ Operación cancelada. El ticket sigue PENDIENTE.");
       correoDestino = correoManual.trim();
     }
 
     setProcesandoTicket(true);
-
     try {
-      // 2. CONFIGURAR VARIABLES PARA EMAILJS (Con los nombres correctos de la plantilla)
-      const templateParams = {
-        to_email: correoDestino.trim(),
-        rutUsuario: nombreDestino,
-        tipo: 'Resolución de Directiva',
-        asunto: ticketSeleccionado.asunto,
-        mensaje: detalleResolucion
-      };
+      const templateParams = { to_email: correoDestino.trim(), rutUsuario: nombreDestino, tipo: 'Resolución de Directiva', asunto: ticketSeleccionado.asunto, mensaje: detalleResolucion };
+      await emailjs.send('service_thw7gfn', 'template_93ch74j', templateParams, 'GG3tS19diXKenuD_-');
 
-      // 3. ENVIAR CORREO VÍA EMAILJS
-      await emailjs.send(
-        'service_thw7gfn',       // Service ID
-        'template_93ch74j',      // Template ID (Feedback Request)
-        templateParams,
-        'GG3tS19diXKenuD_-'      // Public Key
-      );
-
-      // 4. ACTUALIZAR BASE DE DATOS
       const supabase = createClient();
       const { error } = await supabase.from('tickets_soporte').update({ estado: 'Resuelto' }).eq('id', ticketSeleccionado.id);
       
@@ -394,10 +442,7 @@ export default function AdminPanel() {
         setTickets(tickets.map(t => t.id === ticketSeleccionado.id ? { ...t, estado: 'Resuelto' } : t));
         alert(`✅ Correo enviado a ${correoDestino} y ticket marcado como resuelto.`);
         setTicketSeleccionado(null);
-      } else {
-        alert("⚠️ El correo se envió al socio, pero hubo un error al actualizar el estado en Supabase: " + error.message);
-      }
-
+      } else alert("⚠️ El correo se envió al socio, pero hubo un error al actualizar el estado en Supabase: " + error.message);
     } catch (err: any) {
       alert("❌ Error al enviar el correo. Revisa la consola.");
       console.error("Detalle EmailJS:", err);
@@ -421,21 +466,24 @@ export default function AdminPanel() {
     );
   }
 
-  // Cálculos estadísticos
-  const safeVotos = Array.isArray(votos) ? votos : [];
-  const totalVotos = safeVotos.length;
-  const aFavorCount = safeVotos.filter(v => v?.opcion_elegida === 'A favor').length;
-  const enContraCount = safeVotos.filter(v => v?.opcion_elegida === 'En contra').length;
-  const pctFavor = totalVotos === 0 ? 0 : (aFavorCount / totalVotos) * 100;
-  const pctContra = totalVotos === 0 ? 0 : (enContraCount / totalVotos) * 100;
+  // Cálculos estadísticos sincronizados con encuestas_clima
+  const safeEncuestas = Array.isArray(encuestasData) ? encuestasData : [];
+  const totalVotosEmitidos = safeEncuestas.reduce((sum, item) => sum + (item.votos_a || 0) + (item.votos_b || 0), 0);
+
+  // Estadísticas para las Asambleas "A Favor/En Contra"
+  const asambleas = safeEncuestas.filter(e => e.opcion_a === 'A Favor' || e.categoria === 'Asamblea');
+  const asambleaA = asambleas.reduce((sum, item) => sum + (item.votos_a || 0), 0);
+  const asambleaB = asambleas.reduce((sum, item) => sum + (item.votos_b || 0), 0);
+  const asambleaTotal = asambleaA + asambleaB;
+  
+  const pctFavor = asambleaTotal === 0 ? 0 : (asambleaA / asambleaTotal) * 100;
+  const pctContra = asambleaTotal === 0 ? 0 : (asambleaB / asambleaTotal) * 100;
 
   const safeTickets = Array.isArray(tickets) ? tickets : [];
-  const totalTickets = safeTickets.length;
   const ticketsPendientes = safeTickets.filter(t => t?.estado === 'Pendiente').length;
   const ticketsRevision = safeTickets.filter(t => t?.estado === 'En Revisión').length;
 
-  const safeUsuarios = Array.isArray(usuarios) ? usuarios : [];
-  const safeCitas = Array.isArray(citas) ? citas : [];
+  const porcentajeMeta = Math.min(100, (fondoRecaudado / metaFondo) * 100);
 
   const getBadgeStyle = (estado: string) => {
     switch (estado) {
@@ -449,10 +497,7 @@ export default function AdminPanel() {
 
   return (
     <div className="min-h-screen bg-[#f4f7fb] font-sans pb-24 text-slate-900 selection:bg-blue-300 relative overflow-hidden" 
-         onClick={() => { 
-           if (menuAbiertoId) setMenuAbiertoId(null); 
-           if (ticketMenuAbiertoId) setTicketMenuAbiertoId(null); 
-         }}>
+         onClick={() => { if (menuAbiertoId) setMenuAbiertoId(null); if (ticketMenuAbiertoId) setTicketMenuAbiertoId(null); }}>
       
       <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-blue-400/20 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
       <div className="absolute top-40 right-0 w-[600px] h-[600px] bg-purple-400/10 rounded-full blur-[150px] translate-x-1/3 pointer-events-none"></div>
@@ -521,16 +566,16 @@ export default function AdminPanel() {
           </div>
 
           {/* MÉTRICAS PRINCIPALES VIBRANTES */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-6">
             <div className="bg-gradient-to-br from-blue-600 to-blue-800 p-8 rounded-[2rem] shadow-xl shadow-blue-900/20 flex flex-col relative overflow-hidden text-white border border-blue-500/30 hover:scale-[1.02] transition-transform">
               <div className="absolute -right-6 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
               <span className="text-blue-200 text-[11px] font-black uppercase tracking-[0.2em] mb-2 relative z-10">Total Socios</span>
-              <span className="text-5xl font-black relative z-10">{loadingDatos ? '...' : safeUsuarios.length}</span>
+              <span className="text-5xl font-black relative z-10">{loadingDatos ? '...' : usuarios.length}</span>
             </div>
             <div className="bg-gradient-to-br from-emerald-500 to-teal-700 p-8 rounded-[2rem] shadow-xl shadow-emerald-900/20 flex flex-col relative overflow-hidden text-white border border-emerald-400/30 hover:scale-[1.02] transition-transform">
               <div className="absolute -right-6 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
               <span className="text-emerald-100 text-[11px] font-black uppercase tracking-[0.2em] mb-2 relative z-10">Votos Emitidos</span>
-              <span className="text-5xl font-black relative z-10">{loadingDatos ? '...' : totalVotos}</span>
+              <span className="text-5xl font-black relative z-10">{loadingDatos ? '...' : totalVotosEmitidos}</span>
             </div>
             <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-8 rounded-[2rem] shadow-xl shadow-amber-900/20 flex flex-col relative overflow-hidden text-white border border-amber-400/30 hover:scale-[1.02] transition-transform">
               <div className="absolute -right-6 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
@@ -540,9 +585,91 @@ export default function AdminPanel() {
             <div className="bg-gradient-to-br from-indigo-600 to-purple-800 p-8 rounded-[2rem] shadow-xl shadow-indigo-900/20 flex flex-col relative overflow-hidden text-white border border-indigo-400/30 hover:scale-[1.02] transition-transform">
               <div className="absolute -right-6 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
               <span className="text-indigo-200 text-[11px] font-black uppercase tracking-[0.2em] mb-2 relative z-10">Citas Legales</span>
-              <span className="text-5xl font-black relative z-10">{loadingDatos ? '...' : safeCitas.length}</span>
+              <span className="text-5xl font-black relative z-10">{loadingDatos ? '...' : citas.length}</span>
+            </div>
+            <div className="bg-gradient-to-br from-rose-500 to-pink-600 p-8 rounded-[2rem] shadow-xl shadow-rose-900/20 flex flex-col relative overflow-hidden text-white border border-rose-400/30 hover:scale-[1.02] transition-transform cursor-pointer" onClick={() => router.push('/dashboard/solidario')}>
+              <div className="absolute -right-6 -top-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+              <span className="text-rose-100 text-[11px] font-black uppercase tracking-[0.2em] mb-2 relative z-10">Fondo Solidario</span>
+              <span className="text-4xl font-black relative z-10">${loadingDatos ? '...' : fondoRecaudado.toLocaleString('es-CL')}</span>
             </div>
           </div>
+
+          {/* === SECCIÓN DE BANDEJA DE POSTULACIONES === */}
+          <section className="bg-white/90 backdrop-blur-xl border border-white rounded-[2rem] shadow-xl shadow-slate-200/50 overflow-hidden relative">
+            <div className="p-8 border-b border-slate-100 bg-gradient-to-r from-rose-50 to-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="bg-rose-600 text-white p-3 rounded-xl shadow-md text-xl shadow-rose-500/30">📥</div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">Bandeja de Postulaciones</h3>
+                  <p className="text-sm text-slate-500 font-medium mt-1">Nuevos trabajadores solicitando ingresar al sindicato.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="bg-rose-100 text-rose-700 text-xs font-black uppercase tracking-wider px-4 py-1.5 rounded-full shadow-sm">
+                  {postulaciones.length} Pendientes
+                </span>
+                {postulaciones.length > 0 && (
+                  <button 
+                    onClick={handleAprobarTodas}
+                    disabled={procesandoTodas}
+                    className="bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black uppercase tracking-wider px-4 py-2.5 rounded-xl shadow-md transition-all disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {procesandoTodas ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                        Procesando...
+                      </>
+                    ) : (
+                      '✅ Aprobar Todas'
+                    )}
+                  </button>
+                )}
+              </div>
+            </div>
+            
+            <div className="p-2 overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-[800px]">
+                <thead>
+                  <tr className="text-slate-400 text-[10px] font-black uppercase tracking-[0.15em] border-b border-slate-100">
+                    <th className="p-5 pl-8">Postulante</th>
+                    <th className="p-5">RUT</th>
+                    <th className="p-5">Correo Electrónico</th>
+                    <th className="p-5 pr-8 text-right">Acción Requerida</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {postulaciones.length === 0 ? (
+                    <tr><td colSpan={4} className="p-10 text-center text-slate-400 text-sm font-medium">No hay postulaciones pendientes de revisión.</td></tr>
+                  ) : (
+                    postulaciones.map((post) => (
+                      <tr key={post.id} className="hover:bg-rose-50/40 transition-colors group">
+                        <td className="p-5 pl-8 font-extrabold text-slate-800 text-sm">{post.full_name}</td>
+                        <td className="p-5 text-sm font-bold text-slate-500">{post.rut}</td>
+                        <td className="p-5 text-sm font-medium text-slate-600">{post.email}</td>
+                        <td className="p-5 pr-8 text-right">
+                          <div className="flex justify-end gap-2">
+                            <button 
+                              onClick={() => handleRechazarPostulacion(post.id)}
+                              className="text-xs font-bold text-slate-400 hover:text-red-600 px-3 py-2 rounded-lg hover:bg-red-50 transition-colors"
+                            >
+                              Rechazar
+                            </button>
+                            <button 
+                              onClick={() => handleAprobarPostulacion(post)}
+                              disabled={procesandoPostulacion === post.id || procesandoTodas}
+                              className="bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider px-4 py-2 rounded-xl shadow-md transition-all disabled:opacity-50"
+                            >
+                              {procesandoPostulacion === post.id ? 'Creando...' : 'Aprobar Ingreso'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
 
           {/* ACCIONES Y FORMULARIOS MODERNIZADOS */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -625,6 +752,74 @@ export default function AdminPanel() {
               </form>
             </section>
           </div>
+          
+          {/* === SECCIÓN DE NEGOCIACIONES ARCHIVADAS === */}
+          <section className="bg-white/90 backdrop-blur-xl border border-white rounded-[2rem] shadow-xl shadow-slate-200/50 overflow-visible">
+            <div className="p-8 border-b border-slate-100 bg-gradient-to-r from-rose-50 to-white flex items-center justify-between rounded-t-[2rem]">
+              <div className="flex items-center gap-4">
+                <div className="bg-gradient-to-br from-rose-500 to-red-600 text-white p-3 rounded-xl shadow-md text-xl">🗃️</div>
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">Historial de Negociaciones Colectivas</h3>
+                  <p className="text-sm text-slate-500 font-medium mt-1">Registro completo y detallado de procesos legales finalizados.</p>
+                </div>
+              </div>
+              <span className="bg-rose-100 text-rose-700 text-xs font-black uppercase tracking-wider px-4 py-1.5 rounded-full border border-rose-200 shadow-sm">{negociacionesArchivadas.length} Archivadas</span>
+            </div>
+
+            <div className="p-8">
+              {negociacionesArchivadas.length === 0 ? (
+                <div className="bg-slate-50 border border-slate-100 rounded-3xl flex flex-col items-center justify-center py-16 text-center">
+                  <span className="text-4xl mb-3 block opacity-30">📁</span>
+                  <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">No hay procesos de negociación archivados en el sistema.</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {negociacionesArchivadas.map((neg) => {
+                    const sortedHitos = neg.hitos_negociacion ? [...neg.hitos_negociacion].sort((a, b) => new Date(a.fecha).getTime() - new Date(b.fecha).getTime()) : [];
+                    return (
+                      <div key={neg.id} className="bg-white border border-slate-200 rounded-2xl p-6 md:p-8 hover:shadow-lg transition-shadow">
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+                          <div>
+                            <h4 className="text-2xl font-black text-slate-800 tracking-tight">{neg.titulo}</h4>
+                            <p className="text-sm text-slate-500 font-medium mt-1">{neg.descripcion}</p>
+                          </div>
+                          {neg.petitorio_url && (
+                            <a href={neg.petitorio_url} target="_blank" rel="noopener noreferrer" className="bg-rose-50 hover:bg-rose-500 text-rose-600 hover:text-white border border-rose-100 px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-2 shrink-0">
+                              📄 Ver Petitorio
+                            </a>
+                          )}
+                        </div>
+
+                        {sortedHitos.length > 0 ? (
+                          <div className="bg-slate-50 rounded-xl p-6 border border-slate-100">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Cronograma de Eventos Transcurridos</p>
+                            <div className="space-y-4">
+                              {sortedHitos.map((hito, idx) => (
+                                <div key={hito.id} className="flex gap-4 items-start relative">
+                                  {idx !== sortedHitos.length - 1 && <div className="absolute left-2.5 top-6 bottom-[-16px] w-0.5 bg-slate-200"></div>}
+                                  <div className="w-5 h-5 rounded-full bg-white border-4 border-rose-400 mt-0.5 shrink-0 relative z-10 shadow-sm"></div>
+                                  <div className="flex-1 pb-2">
+                                    <div className="flex flex-wrap items-center gap-2 mb-1">
+                                      <h5 className="text-sm font-bold text-slate-800">{hito.titulo}</h5>
+                                      <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-500">{hito.estado}</span>
+                                      <span className="text-[10px] font-bold text-slate-400 ml-auto">{new Date(hito.fecha).toLocaleDateString('es-CL', { timeZone: 'UTC' })}</span>
+                                    </div>
+                                    <p className="text-xs text-slate-600 font-medium">{hito.descripcion}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-400 font-bold italic bg-slate-50 p-4 rounded-xl text-center border border-slate-100">Sin hitos registrados para este proceso.</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </section>
 
           {/* === SECCIÓN DE GESTIÓN DE ROLES === */}
           <section className="bg-white/90 backdrop-blur-xl border border-white rounded-[2rem] shadow-xl shadow-slate-200/50 overflow-visible">
@@ -649,12 +844,12 @@ export default function AdminPanel() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {safeUsuarios.length === 0 ? (
+                  {usuarios.length === 0 ? (
                     <tr><td colSpan={4} className="p-10 text-center text-slate-400 text-sm font-medium">Cargando padrón de usuarios...</td></tr>
                   ) : (
-                    safeUsuarios.map((user, idx) => {
+                    usuarios.map((user, idx) => {
                       const rolUsuario = String(user.role || '').toLowerCase();
-                      const isAdmin = rolUsuario === 'admin' || rolUsuario === 'administrador' || rolUsuario === 'directiva';
+                      const isAdminUser = rolUsuario === 'admin' || rolUsuario === 'administrador';
                       const nombreMostrado = user.full_name || 'Socio sin nombre';
                       const iniciales = nombreMostrado.substring(0, 2).toUpperCase();
 
@@ -677,8 +872,8 @@ export default function AdminPanel() {
                             {user.email || 'Sin correo registrado'}
                           </td>
                           <td className="p-5">
-                            <span className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-full border ${isAdmin ? 'bg-indigo-50 text-indigo-600 border-indigo-200 shadow-sm shadow-indigo-100' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
-                              {isAdmin ? 'Administrador' : 'Socio'}
+                            <span className={`px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-full border ${isAdminUser ? 'bg-indigo-50 text-indigo-600 border-indigo-200 shadow-sm shadow-indigo-100' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                              {isAdminUser ? 'Administrador' : 'Socio'}
                             </span>
                           </td>
                           
@@ -712,7 +907,7 @@ export default function AdminPanel() {
                                     onClick={() => { handleCambiarRol(user); setMenuAbiertoId(null); }}
                                     className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-indigo-600 rounded-xl transition-colors flex items-center gap-3"
                                   >
-                                    <span className="text-lg">🔄</span> Hacer {isAdmin ? 'Socio' : 'Admin'}
+                                    <span className="text-lg">🔄</span> Hacer {isAdminUser ? 'Socio' : 'Admin'}
                                   </button>
                                   <div className="h-px bg-slate-100 my-1"></div>
                                   <button 
@@ -758,11 +953,11 @@ export default function AdminPanel() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {safeTickets.length === 0 ? (
+                  {tickets.length === 0 ? (
                     <tr><td colSpan={4} className="p-10 text-center text-slate-400 text-sm font-medium">Bandeja de tickets impecable.</td></tr>
                   ) : (
-                    safeTickets.map((ticket, idx) => {
-                      const infoSolicitante = safeUsuarios.find(u => u.id === ticket.user_id || u.rut === ticket.rut || u.email === ticket.email);
+                    tickets.map((ticket, idx) => {
+                      const infoSolicitante = usuarios.find(u => u.id === ticket.user_id || u.rut === ticket.rut || u.email === ticket.email);
                       const nombreSolicitante = infoSolicitante?.full_name || ticket.nombre || 'Socio Anónimo';
                       const correoDestino = ticket.email || infoSolicitante?.email || 'No especificado';
                       const rutSolicitante = ticket.rut || infoSolicitante?.rut || 'Sin RUT';
@@ -876,7 +1071,7 @@ export default function AdminPanel() {
                   <p className="text-sm text-slate-500 font-medium mt-1">Revisa y confirma las solicitudes de asesoría jurídica.</p>
                 </div>
               </div>
-              <span className="bg-indigo-100 text-indigo-600 text-xs font-black uppercase tracking-wider px-4 py-1.5 rounded-full border border-indigo-200 shadow-sm shadow-indigo-100">{safeCitas.filter(c => c.estado === 'Pendiente').length} Solicitudes</span>
+              <span className="bg-indigo-100 text-indigo-600 text-xs font-black uppercase tracking-wider px-4 py-1.5 rounded-full border border-indigo-200 shadow-sm shadow-indigo-100">{citas.filter(c => c.estado === 'Pendiente').length} Solicitudes</span>
             </div>
             
             <div className="p-2 overflow-x-auto">
@@ -890,11 +1085,11 @@ export default function AdminPanel() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
-                  {safeCitas.length === 0 ? (
+                  {citas.length === 0 ? (
                     <tr><td colSpan={4} className="p-10 text-center text-slate-400 text-sm font-medium">No hay citas agendadas.</td></tr>
                   ) : (
-                    safeCitas.map((cita, idx) => {
-                      const infoSolicitante = safeUsuarios.find(u => u.rut === cita.rut || u.email === cita.email);
+                    citas.map((cita, idx) => {
+                      const infoSolicitante = usuarios.find(u => u.rut === cita.rut || u.email === cita.email);
                       const nombreSolicitante = infoSolicitante?.full_name || cita.email || cita.rut || 'Socio Anónimo';
 
                       return (

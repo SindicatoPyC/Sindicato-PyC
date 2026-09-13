@@ -78,7 +78,7 @@ export default function LoginPage() {
 
         document.cookie = `sb-sindicato-rol=${profileData.role}; path=/; max-age=86400`;
 
-        if (profileData.role === 'admin') {
+        if (profileData.role === 'admin' || profileData.role === 'administrador') {
           router.push('/dashboard/admin');
         } else {
           router.push('/dashboard');
@@ -216,10 +216,11 @@ export default function LoginPage() {
             </div>
           </form>
 
-          <div className="mt-8 pt-6 border-t border-slate-100 text-center flex items-center justify-between text-xs font-medium text-slate-500">
-            <span>¿Aún no estás registrado?</span>
-            <Link href="/register" className="text-rose-900 font-bold hover:underline">
-              Crear cuenta de socio
+          {/* NUEVO BLOQUE DE POSTULACIÓN */}
+          <div className="mt-8 pt-6 border-t border-slate-100 text-center flex flex-col sm:flex-row items-center justify-between gap-4 text-xs font-medium text-slate-500">
+            <span>¿Aún no eres parte del sindicato?</span>
+            <Link href="/postular" className="bg-rose-50 text-rose-900 border border-rose-100 font-bold px-5 py-2.5 rounded-xl hover:bg-rose-100 transition-colors shadow-sm">
+              Postularse aquí
             </Link>
           </div>
         </div>

@@ -10,6 +10,8 @@ export default function Campanita() {
   const supabase = createClient();
 
   useEffect(() => {
+    let canalActivo: any = null; // Guardamos la referencia del canal para limpiarlo correctamente
+
     const initCampanita = async () => {
       // 1. Identificar al usuario actual
       const { data: { user } } = await supabase.auth.getUser();
@@ -18,37 +20,42 @@ export default function Campanita() {
         setUserId(user.id);
         cargarNotificaciones(user.id);
 
-        // 2. Escuchar solo las notificaciones de este usuario en la tabla NUEVA
-        const channelName = `notificaciones_${user.id}`;
-        const channel = supabase
+        // 2. Generamos un nombre único con Date.now() para evitar choques al recargar
+        const channelName = `notificaciones_${user.id}_${Date.now()}`;
+        
+        // 3. Encadenamos .on() y luego .subscribe() al final, guardándolo en la variable
+        canalActivo = supabase
           .channel(channelName)
           .on(
             'postgres_changes',
             { 
               event: 'INSERT', 
               schema: 'public', 
-              table: 'notificaciones', // 👈 Apuntando a la tabla correcta
-              filter: `user_id=eq.${user.id}` // 👈 Solo alertas de este usuario
+              table: 'notificaciones', // Apuntando a la tabla correcta
+              filter: `user_id=eq.${user.id}` // Solo alertas de este usuario
             },
             (payload) => {
               setNotificaciones((prev) => [payload.new, ...prev]);
             }
           )
           .subscribe();
-
-        return () => {
-          supabase.removeChannel(channel);
-        };
       }
     };
 
     initCampanita();
+
+    // Limpieza al desmontar el componente (vital para evitar el error rojo en Next.js)
+    return () => {
+      if (canalActivo) {
+        supabase.removeChannel(canalActivo);
+      }
+    };
   }, []);
 
   const cargarNotificaciones = async (uid: string) => {
     try {
       const { data, error } = await supabase
-        .from('notificaciones') // 👈 Apuntando a la tabla correcta
+        .from('notificaciones') 
         .select('*')
         .eq('user_id', uid)
         .order('created_at', { ascending: false })
@@ -70,7 +77,7 @@ export default function Campanita() {
       // Actualizamos a 'leido: true' en la base de datos
       await supabase
         .from('notificaciones')
-        .update({ leido: true }) // 👈 Usando el nombre correcto de la columna
+        .update({ leido: true }) 
         .eq('user_id', userId)
         .eq('leido', false);
       

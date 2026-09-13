@@ -2,146 +2,293 @@
 
 import React, { useEffect, useState } from 'react';
 import { createClient } from '../../lib/supabase';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function EncuestasPage() {
-  const [isMounted, setIsMounted] = useState(false);
-
-  // Estados de Encuestas
+  const [user, setUser] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [encuestas, setEncuestas] = useState<any[]>([]);
+  const [misVotos, setMisVotos] = useState<Record<number, string>>({});
   const [loading, setLoading] = useState(true);
 
+  // Estados Admin (Modales)
+  const [showModal, setShowModal] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [currentId, setCurrentId] = useState<number | null>(null);
+  const [formData, setFormData] = useState({ titulo: '', categoria: 'Asamblea', opcion_a: '', opcion_b: '' });
+  const [guardando, setGuardando] = useState(false);
+
   useEffect(() => {
-    setIsMounted(true);
+    fetchInitialData();
   }, []);
 
-  useEffect(() => {
-    if (!isMounted) return;
-
-    async function initEncuestas() {
-      // Traer las encuestas desde Supabase
-      try {
-        const supabase = createClient();
-        const { data } = await supabase
-          .from('encuestas_clima')
-          .select('*')
-          .order('created_at', { ascending: false });
-          
-        if (Array.isArray(data)) setEncuestas(data);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    initEncuestas();
-  }, [isMounted]);
-
-  const handleVotar = async (id: number, opcion: 'a' | 'b', votosActuales: number) => {
-    try {
-      const supabase = createClient();
-      const campo = opcion === 'a' ? 'votos_a' : 'votos_b';
+  async function fetchInitialData() {
+    setLoading(true);
+    const supabase = createClient();
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    
+    if (currentUser) {
+      setUser(currentUser);
       
-      // Sumamos 1 voto a la opción elegida
-      const { error } = await supabase
-        .from('encuestas_clima')
-        .update({ [campo]: votosActuales + 1 })
-        .eq('id', id);
+      // 1. Verificar Rol
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', currentUser.id).single();
+      const rolUsuario = String(profile?.role || '').toLowerCase();
+      setIsAdmin(rolUsuario === 'admin' || rolUsuario === 'administrador' || rolUsuario === 'directiva');
 
-      if (!error) {
-        // Actualizamos el estado local para ver la animación de la barra de inmediato
-        setEncuestas(encuestas.map(e => e.id === id ? { ...e, [campo]: votosActuales + 1 } : e));
+      // 2. Traer Encuestas
+      const { data: encuestasData } = await supabase.from('encuestas_clima').select('*').order('created_at', { ascending: false });
+      if (encuestasData) setEncuestas(encuestasData);
+
+      // 3. Traer mis votos (para saber qué voté y permitir anular)
+      const { data: misVotosData } = await supabase.from('votos_encuestas').select('encuesta_id, opcion').eq('user_id', currentUser.id);
+      if (misVotosData) {
+        const votosMap: Record<number, string> = {};
+        misVotosData.forEach(v => { votosMap[v.encuesta_id] = v.opcion; });
+        setMisVotos(votosMap);
       }
-    } catch (err) {
-      console.error(err);
     }
+    setLoading(false);
+  }
+
+  // --- LÓGICA DEL SOCIO (VOTAR Y ANULAR) ---
+  const handleVotar = async (encuestaId: number, opcionElegida: 'a' | 'b') => {
+    if (misVotos[encuestaId]) return; // Ya votó
+    
+    const supabase = createClient();
+    const encuesta = encuestas.find(e => e.id === encuestaId);
+    if (!encuesta) return;
+
+    // Actualización optimista
+    const campo = opcionElegida === 'a' ? 'votos_a' : 'votos_b';
+    setMisVotos({ ...misVotos, [encuestaId]: opcionElegida });
+    setEncuestas(encuestas.map(e => e.id === encuestaId ? { ...e, [campo]: (e[campo] || 0) + 1 } : e));
+
+    try {
+      // Registrar voto en tabla auxiliar
+      await supabase.from('votos_encuestas').insert([{ encuesta_id: encuestaId, user_id: user.id, opcion: opcionElegida }]);
+      // Incrementar contador en encuesta
+      await supabase.from('encuestas_clima').update({ [campo]: (encuesta[campo] || 0) + 1 }).eq('id', encuestaId);
+    } catch (err) { console.error(err); }
   };
 
-  if (!isMounted) return null;
+  const handleAnularVoto = async (encuestaId: number) => {
+    const opcionPrevia = misVotos[encuestaId];
+    if (!opcionPrevia) return;
+
+    const supabase = createClient();
+    const encuesta = encuestas.find(e => e.id === encuestaId);
+    if (!encuesta) return;
+
+    // Actualización optimista
+    const campo = opcionPrevia === 'a' ? 'votos_a' : 'votos_b';
+    const nuevosVotos = { ...misVotos };
+    delete nuevosVotos[encuestaId];
+    setMisVotos(nuevosVotos);
+    setEncuestas(encuestas.map(e => e.id === encuestaId ? { ...e, [campo]: Math.max(0, (e[campo] || 0) - 1) } : e));
+
+    try {
+      // Eliminar registro auxiliar
+      await supabase.from('votos_encuestas').delete().eq('encuesta_id', encuestaId).eq('user_id', user.id);
+      // Restar contador en encuesta
+      await supabase.from('encuestas_clima').update({ [campo]: Math.max(0, (encuesta[campo] || 0) - 1) }).eq('id', encuestaId);
+    } catch (err) { console.error(err); }
+  };
+
+  // --- LÓGICA DEL ADMIN (CRUD) ---
+  const handleGuardarEncuesta = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGuardando(true);
+    const supabase = createClient();
+
+    try {
+      if (isEditing && currentId) {
+        await supabase.from('encuestas_clima').update({
+          titulo: formData.titulo, categoria: formData.categoria, opcion_a: formData.opcion_a, opcion_b: formData.opcion_b
+        }).eq('id', currentId);
+      } else {
+        await supabase.from('encuestas_clima').insert([{
+          titulo: formData.titulo, categoria: formData.categoria, opcion_a: formData.opcion_a, opcion_b: formData.opcion_b, votos_a: 0, votos_b: 0
+        }]);
+      }
+      setShowModal(false);
+      fetchInitialData();
+    } catch (err) { alert('Error al guardar'); } finally { setGuardando(false); }
+  };
+
+  const handleEliminarEncuesta = async (id: number) => {
+    if (!window.confirm('¿Seguro que deseas eliminar esta encuesta permanentemente?')) return;
+    const supabase = createClient();
+    await supabase.from('encuestas_clima').delete().eq('id', id);
+    setEncuestas(encuestas.filter(e => e.id !== id));
+  };
+
+  const openEditModal = (encuesta: any) => {
+    setFormData({ titulo: encuesta.titulo, categoria: encuesta.categoria, opcion_a: encuesta.opcion_a, opcion_b: encuesta.opcion_b });
+    setCurrentId(encuesta.id);
+    setIsEditing(true);
+    setShowModal(true);
+  };
+
+  const openCreateModal = () => {
+    setFormData({ titulo: '', categoria: 'Asamblea', opcion_a: '', opcion_b: '' });
+    setIsEditing(false);
+    setShowModal(true);
+  };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#f8fafc]"><div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>;
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-12">
-      
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
+    <div className="min-h-screen bg-[#f8fafc] font-sans text-slate-900 pb-20 selection:bg-indigo-100">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-10 space-y-8 relative z-10">
         
-        {/* Cabecera del Módulo */}
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-8 relative overflow-hidden">
-           <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-indigo-100 opacity-50 rounded-full blur-2xl"></div>
+        {/* CABECERA 2.0 */}
+        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="bg-white/80 backdrop-blur-xl rounded-[2rem] shadow-xl shadow-slate-200/40 border border-slate-100 p-8 relative overflow-hidden flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
            <div className="relative z-10">
-             <h2 className="text-3xl font-extrabold text-slate-900 mb-2">Encuestas y Clima Laboral</h2>
-             <p className="text-slate-500 max-w-2xl text-sm">
-               Tu opinión es fundamental. Ayúdanos a definir prioridades, evaluar beneficios y mejorar las condiciones respondiendo estas consultas rápidas.
-             </p>
+             <span className="bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase tracking-[0.25em] px-3 py-1.5 rounded-full mb-4 inline-block shadow-sm">Participación Activa</span>
+             <h2 className="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight mb-2">Votaciones y Clima</h2>
+             <p className="text-slate-500 max-w-xl text-sm font-medium">Tu voz define el rumbo del sindicato. Participa en las asambleas y define prioridades.</p>
            </div>
-        </div>
+           {isAdmin && (
+             <button onClick={openCreateModal} className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase tracking-widest text-xs px-8 py-4 rounded-2xl shadow-lg shadow-indigo-500/30 transition-transform hover:-translate-y-1">
+               + Crear Votación
+             </button>
+           )}
+        </motion.div>
 
-        {loading ? (
-          <p className="text-center text-slate-400 py-10">Cargando consultas activas...</p>
-        ) : encuestas.length === 0 ? (
-          <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-12 text-center">
-             <span className="text-5xl mb-4 block">🍃</span>
-             <p className="text-slate-500 font-medium">No hay encuestas activas en este momento.</p>
-          </div>
+        {encuestas.length === 0 ? (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-white rounded-[2rem] shadow-sm border border-slate-100 p-16 text-center">
+             <span className="text-6xl mb-6 block opacity-80">🗳️</span>
+             <h3 className="text-xl font-black text-slate-700 mb-2">Bandeja Vacía</h3>
+             <p className="text-slate-400 font-medium text-sm">No hay asambleas o votaciones activas en este momento.</p>
+          </motion.div>
         ) : (
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-6">
             {encuestas.map((item) => {
-              // Calcular porcentajes dinámicos
-              const total = (item.votos_a || 0) + (item.votos_b || 0);
-              const pctA = total === 0 ? 0 : Math.round((item.votos_a / total) * 100);
-              const pctB = total === 0 ? 0 : Math.round((item.votos_b / total) * 100);
+              const votosA = item.votos_a || 0;
+              const votosB = item.votos_b || 0;
+              const total = votosA + votosB;
+              const pctA = total === 0 ? 0 : Math.round((votosA / total) * 100);
+              const pctB = total === 0 ? 0 : Math.round((votosB / total) * 100);
+              const miVoto = misVotos[item.id];
 
               return (
-                <div key={item.id} className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6 hover:shadow-md transition-shadow">
-                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                <motion.div key={item.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-[2rem] p-6 sm:p-8 border border-slate-100 shadow-xl shadow-slate-200/30 relative overflow-hidden transition-all hover:shadow-2xl hover:shadow-slate-200/50">
+                  
+                  {/* ADMIN CONTROLS EN LA TARJETA */}
+                  {isAdmin && (
+                    <div className="absolute top-6 right-6 flex items-center gap-2">
+                      <button onClick={() => openEditModal(item)} className="p-2.5 bg-slate-50 text-blue-600 hover:bg-blue-500 hover:text-white rounded-xl transition-colors font-bold text-xs shadow-sm">Editar</button>
+                      <button onClick={() => handleEliminarEncuesta(item.id)} className="p-2.5 bg-slate-50 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-colors font-bold text-xs shadow-sm">Borrar</button>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-8 pr-24">
                     <div>
-                      <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100">
+                      <span className="text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 shadow-inner">
                         {item.categoria}
                       </span>
-                      <h3 className="text-xl font-bold text-slate-800 mt-3 leading-snug">{item.titulo}</h3>
+                      <h3 className="text-2xl font-black text-slate-800 mt-4 leading-tight">{item.titulo}</h3>
                     </div>
-                    <span className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-xl text-xs font-bold shrink-0">
-                      👥 {total} votos
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                    {/* OPCIÓN A */}
+                    <button 
+                      onClick={() => !miVoto && handleVotar(item.id, 'a')}
+                      disabled={!!miVoto}
+                      className={`relative p-5 rounded-2xl border-2 transition-all text-left overflow-hidden group 
+                        ${miVoto === 'a' ? 'border-emerald-500 bg-emerald-50 shadow-lg shadow-emerald-500/20' : 
+                          miVoto ? 'border-slate-100 bg-slate-50 opacity-50' : 'border-slate-200 bg-white hover:border-indigo-400 hover:shadow-md cursor-pointer'}`}
+                    >
+                      <div className="flex justify-between items-center font-black text-slate-800 mb-4 relative z-10">
+                        <span className={`text-base ${miVoto === 'a' && 'text-emerald-700'}`}>{item.opcion_a}</span>
+                        <span className={`text-lg ${miVoto === 'a' ? 'text-emerald-600' : 'text-slate-400'}`}>{pctA}%</span>
+                      </div>
+                      <div className="w-full bg-slate-200/50 rounded-full h-2.5 relative z-10 overflow-hidden shadow-inner">
+                        <div className={`h-full rounded-full transition-all duration-1000 ${miVoto === 'a' ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${pctA}%` }}></div>
+                      </div>
+                      {miVoto === 'a' && <div className="absolute top-4 right-4 text-emerald-500 text-xl">✅</div>}
+                    </button>
+
+                    {/* OPCIÓN B */}
+                    <button 
+                      onClick={() => !miVoto && handleVotar(item.id, 'b')}
+                      disabled={!!miVoto}
+                      className={`relative p-5 rounded-2xl border-2 transition-all text-left overflow-hidden group 
+                        ${miVoto === 'b' ? 'border-emerald-500 bg-emerald-50 shadow-lg shadow-emerald-500/20' : 
+                          miVoto ? 'border-slate-100 bg-slate-50 opacity-50' : 'border-slate-200 bg-white hover:border-indigo-400 hover:shadow-md cursor-pointer'}`}
+                    >
+                      <div className="flex justify-between items-center font-black text-slate-800 mb-4 relative z-10">
+                        <span className={`text-base ${miVoto === 'b' && 'text-emerald-700'}`}>{item.opcion_b}</span>
+                        <span className={`text-lg ${miVoto === 'b' ? 'text-emerald-600' : 'text-slate-400'}`}>{pctB}%</span>
+                      </div>
+                      <div className="w-full bg-slate-200/50 rounded-full h-2.5 relative z-10 overflow-hidden shadow-inner">
+                        <div className={`h-full rounded-full transition-all duration-1000 ${miVoto === 'b' ? 'bg-emerald-500' : 'bg-indigo-500'}`} style={{ width: `${pctB}%` }}></div>
+                      </div>
+                      {miVoto === 'b' && <div className="absolute top-4 right-4 text-emerald-500 text-xl">✅</div>}
+                    </button>
+                  </div>
+
+                  <div className="mt-6 pt-6 border-t border-slate-100 flex justify-between items-center">
+                    <span className="text-xs font-black uppercase tracking-widest text-slate-400 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
+                      👥 {total} Votos Totales
                     </span>
+                    {miVoto && !isAdmin && (
+                       <button onClick={() => handleAnularVoto(item.id)} className="text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-white bg-red-50 hover:bg-red-500 px-4 py-2 rounded-xl transition-colors shadow-sm">
+                         Anular mi Voto
+                       </button>
+                    )}
                   </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                    
-                    {/* Botón Opción A */}
-                    <button 
-                      onClick={() => handleVotar(item.id, 'a', item.votos_a)} 
-                      className="p-4 rounded-2xl border border-slate-200 hover:border-blue-500 bg-slate-50 hover:bg-blue-50/50 transition-all text-left group overflow-hidden relative"
-                    >
-                      <div className="flex justify-between font-bold text-slate-800 text-sm mb-3 relative z-10">
-                        <span className="pr-4">{item.opcion_a}</span>
-                        <span className="text-blue-600">{pctA}%</span>
-                      </div>
-                      <div className="w-full bg-slate-200 rounded-full h-2 relative z-10">
-                        <div className="bg-blue-600 h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${pctA}%` }}></div>
-                      </div>
-                    </button>
-
-                    {/* Botón Opción B */}
-                    <button 
-                      onClick={() => handleVotar(item.id, 'b', item.votos_b)} 
-                      className="p-4 rounded-2xl border border-slate-200 hover:border-indigo-500 bg-slate-50 hover:bg-indigo-50/50 transition-all text-left group overflow-hidden relative"
-                    >
-                      <div className="flex justify-between font-bold text-slate-800 text-sm mb-3 relative z-10">
-                        <span className="pr-4">{item.opcion_b}</span>
-                        <span className="text-indigo-600">{pctB}%</span>
-                      </div>
-                      <div className="w-full bg-slate-200 rounded-full h-2 relative z-10">
-                        <div className="bg-indigo-600 h-full rounded-full transition-all duration-700 ease-out" style={{ width: `${pctB}%` }}></div>
-                      </div>
-                    </button>
-
-                  </div>
-                </div>
+                </motion.div>
               );
             })}
           </div>
         )}
-
       </main>
+
+      <AnimatePresence>
+        {/* MODAL ADMIN: CREAR / EDITAR ENCUESTA */}
+        {showModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4">
+             <div className="bg-white rounded-[2rem] w-full max-w-lg shadow-2xl flex flex-col border border-slate-100">
+               <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex justify-between items-center rounded-t-[2rem]">
+                 <h3 className="text-xl font-black text-slate-800">{isEditing ? 'Editar Votación' : 'Crear Nueva Votación'}</h3>
+                 <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-800 text-xl font-bold bg-white w-8 h-8 rounded-full shadow-sm flex items-center justify-center">✕</button>
+               </div>
+               <div className="p-6">
+                 <form onSubmit={handleGuardarEncuesta} className="space-y-5">
+                   <div>
+                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Asunto / Materia a Votar</label>
+                     <input type="text" required value={formData.titulo} onChange={e => setFormData({...formData, titulo: e.target.value})} placeholder="Ej: Aprobación de Presupuesto 2026" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm" />
+                   </div>
+                   <div>
+                     <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Categoría</label>
+                     <select value={formData.categoria} onChange={e => setFormData({...formData, categoria: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm">
+                       <option value="Asamblea">Asamblea Ordinaria</option>
+                       <option value="Extraordinaria">Asamblea Extraordinaria</option>
+                       <option value="Beneficios">Elección de Beneficios</option>
+                       <option value="Directiva">Consulta Directiva</option>
+                     </select>
+                   </div>
+                   <div className="grid grid-cols-2 gap-4">
+                     <div>
+                       <label className="block text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-2">Opción A</label>
+                       <input type="text" required value={formData.opcion_a} onChange={e => setFormData({...formData, opcion_a: e.target.value})} placeholder="Ej: A Favor" className="w-full bg-white border border-emerald-200 rounded-xl px-4 py-3.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm" />
+                     </div>
+                     <div>
+                       <label className="block text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-2">Opción B</label>
+                       <input type="text" required value={formData.opcion_b} onChange={e => setFormData({...formData, opcion_b: e.target.value})} placeholder="Ej: En Contra" className="w-full bg-white border border-indigo-200 rounded-xl px-4 py-3.5 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500/20 shadow-sm" />
+                     </div>
+                   </div>
+                   <button type="submit" disabled={guardando} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 rounded-xl shadow-lg shadow-indigo-500/30 transition-all text-sm uppercase tracking-widest mt-4">
+                     {guardando ? 'Guardando Votación...' : 'Publicar Votación'}
+                   </button>
+                 </form>
+               </div>
+             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
