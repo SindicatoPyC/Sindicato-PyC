@@ -34,11 +34,5 @@ Abran su terminal y ejecuten:
 git clone <PEGAR_AQUI_LA_URL_DE_GITHUB>
 cd snoverus-app
 
-
-
-
-
-
-
-
-
+Vercel:
+https://sindicato-py-d6qwpqegd-sindicato-py-c.vercel.app
