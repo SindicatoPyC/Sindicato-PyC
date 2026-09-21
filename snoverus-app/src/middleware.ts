@@ -4,7 +4,8 @@ export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   
   const sessionCookie = request.cookies.get('sb-sindicato-session')?.value;
-  const rolCookie = request.cookies.get('sb-sindicato-rol')?.value;
+  // Convertimos a minúsculas y limpiamos espacios para evitar bloqueos tontos
+  const rolCookie = request.cookies.get('sb-sindicato-rol')?.value?.toLowerCase()?.trim();
 
   const isLoginPage = pathname === '/';
   const isDashboard = pathname.startsWith('/dashboard');
@@ -21,8 +22,11 @@ export function middleware(request: NextRequest) {
   }
 
   // 🛡️ 3. Protección del panel de administración
-  if (isAdminArea && rolCookie !== 'admin') {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+  if (isAdminArea) {
+    // Si NO eres ninguno de estos 3, te expulsa al dashboard
+    if (rolCookie !== 'admin' && rolCookie !== 'administrador' && rolCookie !== 'superadmin') {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
   }
 
   return NextResponse.next();

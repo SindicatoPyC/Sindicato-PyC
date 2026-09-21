@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -10,6 +10,12 @@ export default function AdminPanel() {
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
   const [validando, setValidando] = useState(true);
+
+  // Estados para Identidad y Tenant del Sindicato Actual
+  const [idSindicatoActual, setIdSindicatoActual] = useState<number | null>(null);
+  const [editNombreSindicato, setEditNombreSindicato] = useState('');
+  const [editLogoSindicato, setEditLogoSindicato] = useState('');
+  const [guardandoSindicato, setGuardandoSindicato] = useState(false);
 
   // Estados para Formularios
   const [tituloNoticia, setTituloNoticia] = useState('');
@@ -33,7 +39,7 @@ export default function AdminPanel() {
   const [citas, setCitas] = useState<any[]>([]);
   const [postulaciones, setPostulaciones] = useState<any[]>([]);
   
-  // NUEVO: Estados del Fondo Solidario y Negociaciones Archivadas
+  // Estados del Fondo Solidario y Negociaciones Archivadas
   const [fondoRecaudado, setFondoRecaudado] = useState(0); 
   const [metaFondo, setMetaFondo] = useState(1000000); 
   const [negociacionesArchivadas, setNegociacionesArchivadas] = useState<any[]>([]);
@@ -88,7 +94,7 @@ export default function AdminPanel() {
         
       const rolUsuario = String(data?.role || '').trim().toLowerCase();
       
-      if (rolUsuario === 'admin' || rolUsuario === 'administrador' || rolUsuario === 'directiva') {
+      if (rolUsuario === 'superadmin' || rolUsuario === 'admin' || rolUsuario === 'administrador' || rolUsuario === 'directiva') {
         setValidando(false);
         fetchEnterpriseData(); 
       } else {
@@ -102,6 +108,19 @@ export default function AdminPanel() {
   const fetchEnterpriseData = async () => {
     try {
       const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (user) {
+        const { data: profile } = await supabase.from('profiles').select('sindicato_id').eq('id', user.id).single();
+        if (profile?.sindicato_id) {
+          setIdSindicatoActual(profile.sindicato_id);
+          const { data: sindicato } = await supabase.from('sindicatos').select('nombre, logo_url').eq('id', profile.sindicato_id).single();
+          if (sindicato) {
+            setEditNombreSindicato(sindicato.nombre || '');
+            setEditLogoSindicato(sindicato.logo_url || '');
+          }
+        }
+      }
       
       const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
       if (Array.isArray(usersData)) setUsuarios(usersData);
@@ -118,20 +137,15 @@ export default function AdminPanel() {
       const { data: postData } = await supabase.from('postulaciones').select('*').eq('estado', 'Pendiente').order('created_at', { ascending: false });
       if (Array.isArray(postData)) setPostulaciones(postData);
 
-      // Sincronización del Fondo Solidario y su Meta
       const { data: aportesData } = await supabase.from('fondo_aportes').select('monto').eq('estado', 'Aprobado');
       if (aportesData) setFondoRecaudado(aportesData.reduce((sum, a) => sum + Number(a.monto), 0));
 
       const { data: metaData } = await supabase.from('fondo_meta').select('monto_meta').eq('id', 1).single();
       if (metaData) setMetaFondo(metaData.monto_meta);
 
-      // Sincronización de las Negociaciones Archivadas + Sus Hitos en un Join
       const { data: negData } = await supabase
         .from('negociacion_info')
-        .select(`
-          *,
-          hitos_negociacion (*)
-        `)
+        .select(`*, hitos_negociacion (*)`)
         .eq('estado', 'Archivada')
         .order('id', { ascending: false });
         
@@ -141,6 +155,26 @@ export default function AdminPanel() {
       console.error("Error cargando datos:", err);
     } finally {
       setLoadingDatos(false);
+    }
+  };
+
+  const guardarCambiosSindicato = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!idSindicatoActual) return;
+    setGuardandoSindicato(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('sindicatos').update({
+        nombre: editNombreSindicato,
+        logo_url: editLogoSindicato.trim() !== '' ? editLogoSindicato.trim() : '/logopyf.jpeg'
+      }).eq('id', idSindicatoActual);
+
+      if (error) throw error;
+      alert('✅ Identidad visual actualizada. Los socios verán el cambio en tiempo real.');
+    } catch (err: any) {
+      alert('❌ Error al actualizar el sindicato: ' + err.message);
+    } finally {
+      setGuardandoSindicato(false);
     }
   };
 
@@ -272,6 +306,7 @@ export default function AdminPanel() {
     } catch (err: any) {}
   };
 
+  // 🚀 PROCESAMIENTO AUTOMATIZADO CORE (Supabase + EmailJS + WhatsApp Web.js Local)
   const procesarPostulanteSupabase = async (postulacion: any) => {
     const supabase = createClient();
     const cleanRut = postulacion.rut.replace(/[^0-9kK]/g, '');
@@ -284,7 +319,7 @@ export default function AdminPanel() {
     });
 
     if (authError) {
-      console.warn("Aviso Auth (cuenta posiblemente existente):", authError.message);
+      console.warn("Aviso Auth:", authError.message);
     }
 
     if (authData?.user) {
@@ -293,24 +328,27 @@ export default function AdminPanel() {
          rut: postulacion.rut,
          full_name: postulacion.full_name,
          email: postulacion.email,
-         role: 'socio'
+         role: 'socio',
+         sindicato_id: idSindicatoActual
        });
     } else {
        await supabase.from('profiles').upsert({
          rut: postulacion.rut,
          full_name: postulacion.full_name,
          email: postulacion.email,
-         role: 'socio'
+         role: 'socio',
+         sindicato_id: idSindicatoActual
        }, { onConflict: 'rut' });
     }
 
     await supabase.from('postulaciones').update({ estado: 'Aprobada' }).eq('id', postulacion.id);
 
+    // 1. Envío automatizado de correo (EmailJS)
     const templateParams = {
       to_email: postulacion.email,
       rutUsuario: postulacion.full_name,
       tipo: 'Aprobación de Membresía',
-      asunto: '¡Bienvenido al Sindicato PYC!',
+      asunto: '¡Bienvenido a la Organización!',
       mensaje: `Hola ${postulacion.full_name},\n\nTu postulación ha sido aprobada por la directiva.\n\nPuedes acceder al portal con las siguientes credenciales:\n\nRUT: ${postulacion.rut}\nContraseña: ${passwordTemporal}\n\nTe recomendamos cambiar tu contraseña en tu primer ingreso.`
     };
 
@@ -318,18 +356,38 @@ export default function AdminPanel() {
       await emailjs.send('service_thw7gfn', 'template_93ch74j', templateParams, 'GG3tS19diXKenuD_-');
     } catch (emailErr) {
       console.error("Fallo de EmailJS:", emailErr);
-      throw new Error("Se aprobó en base de datos, pero EmailJS no pudo despachar el correo.");
     }
+
+    // 2. Envío 100% automatizado por WhatsApp (A través de nuestra propia API whatsapp-web.js local)
+    if (postulacion.telefono) {
+      try {
+        const textoMensaje = `*SINDICATO: POSTULACIÓN APROBADA*\n\n¡Hola ${postulacion.full_name}! Tu solicitud ha sido aceptada.\n\nTus credenciales:\n*RUT:* ${postulacion.rut}\n*Clave Temporal:* ${passwordTemporal}\n\nIngresa al portal y cambia tu clave en el primer inicio.`;
+
+        // Llamamos al servidor Node.js que está corriendo en paralelo en el puerto 3001
+        await fetch('http://localhost:3001/api/enviar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            telefono: postulacion.telefono,
+            mensaje: textoMensaje
+          })
+        });
+      } catch (wspErr) {
+        console.error("Fallo automatizando WhatsApp con servidor local:", wspErr);
+      }
+    }
+
+    return passwordTemporal; 
   };
 
   const handleAprobarPostulacion = async (postulacion: any) => {
-    if (!window.confirm(`¿Aprobar al socio ${postulacion.full_name}? Se enviarán sus credenciales a ${postulacion.email}.`)) return;
+    if (!window.confirm(`¿Aprobar al socio ${postulacion.full_name}?\n\nSe crearán sus credenciales, se enviará el correo electrónico y la notificación automatizada por WhatsApp mediante el servidor local.`)) return;
 
     setProcesandoPostulacion(postulacion.id);
     try {
       await procesarPostulanteSupabase(postulacion);
       setPostulaciones(postulaciones.filter(p => p.id !== postulacion.id));
-      alert(`✅ Socio aprobado exitosamente. Correo enviado a ${postulacion.email}.`);
+      alert(`✅ Socio ${postulacion.full_name} aprobado y notificado con éxito.`);
       fetchEnterpriseData(); 
     } catch (err: any) {
       alert(`❌ Error durante la aprobación: ${err.message}`);
@@ -339,7 +397,7 @@ export default function AdminPanel() {
   };
 
   const handleAprobarTodas = async () => {
-    if (!window.confirm(`¿Estás seguro de que deseas APROBAR a los ${postulaciones.length} postulantes pendientes?\n\nSe crearán sus cuentas y se enviarán los correos de manera automática.`)) return;
+    if (!window.confirm(`¿Estás seguro de que deseas APROBAR de forma masiva a los ${postulaciones.length} postulantes pendientes?\n\nSe enviarán notificaciones por correo electrónico y WhatsApp a todos.`)) return;
 
     setProcesandoTodas(true);
     let aprobados = 0;
@@ -350,7 +408,6 @@ export default function AdminPanel() {
         await procesarPostulanteSupabase(post);
         aprobados++;
       } catch (err) {
-        console.error(`Error aprobando a ${post.email}:`, err);
         errores++;
       }
     }
@@ -399,7 +456,7 @@ export default function AdminPanel() {
   };
 
   const handleEliminarTicket = async (id: string | number) => {
-    if (!window.confirm("⚠️ ¿Estás seguro de que deseas ELIMINAR este ticket permanentemente? Esta acción no se puede deshacer.")) return;
+    if (!window.confirm("⚠️ ¿Estás seguro de que deseas ELIMINAR este ticket permanentemente?")) return;
     try {
       const supabase = createClient();
       const { error } = await supabase.from('tickets_soporte').delete().eq('id', id);
@@ -425,8 +482,8 @@ export default function AdminPanel() {
     const nombreDestino = usuarioAsociado?.full_name || ticketSeleccionado.nombre || 'Socio Anónimo';
 
     if (!correoDestino || correoDestino === 'No especificado') {
-      const correoManual = window.prompt("⚠️ Este ticket es anónimo o no tiene correo registrado.\n\nPor favor, ingresa el correo del socio manualmente para notificarle:");
-      if (!correoManual || !correoManual.trim()) return alert("❌ Operación cancelada. El ticket sigue PENDIENTE.");
+      const correoManual = window.prompt("⚠️ Ingresa el correo del socio manualmente para notificarle:");
+      if (!correoManual || !correoManual.trim()) return alert("❌ Operación cancelada.");
       correoDestino = correoManual.trim();
     }
 
@@ -440,12 +497,11 @@ export default function AdminPanel() {
       
       if (!error) {
         setTickets(tickets.map(t => t.id === ticketSeleccionado.id ? { ...t, estado: 'Resuelto' } : t));
-        alert(`✅ Correo enviado a ${correoDestino} y ticket marcado como resuelto.`);
+        alert(`✅ Correo enviado y ticket marcado como resuelto.`);
         setTicketSeleccionado(null);
-      } else alert("⚠️ El correo se envió al socio, pero hubo un error al actualizar el estado en Supabase: " + error.message);
+      } else alert("⚠️ El correo se envió al socio, pero hubo un error en Supabase: " + error.message);
     } catch (err: any) {
       alert("❌ Error al enviar el correo. Revisa la consola.");
-      console.error("Detalle EmailJS:", err);
     } finally {
       setProcesandoTicket(false);
     }
@@ -466,11 +522,9 @@ export default function AdminPanel() {
     );
   }
 
-  // Cálculos estadísticos sincronizados con encuestas_clima
   const safeEncuestas = Array.isArray(encuestasData) ? encuestasData : [];
   const totalVotosEmitidos = safeEncuestas.reduce((sum, item) => sum + (item.votos_a || 0) + (item.votos_b || 0), 0);
 
-  // Estadísticas para las Asambleas "A Favor/En Contra"
   const asambleas = safeEncuestas.filter(e => e.opcion_a === 'A Favor' || e.categoria === 'Asamblea');
   const asambleaA = asambleas.reduce((sum, item) => sum + (item.votos_a || 0), 0);
   const asambleaB = asambleas.reduce((sum, item) => sum + (item.votos_b || 0), 0);
@@ -482,8 +536,6 @@ export default function AdminPanel() {
   const safeTickets = Array.isArray(tickets) ? tickets : [];
   const ticketsPendientes = safeTickets.filter(t => t?.estado === 'Pendiente').length;
   const ticketsRevision = safeTickets.filter(t => t?.estado === 'En Revisión').length;
-
-  const porcentajeMeta = Math.min(100, (fondoRecaudado / metaFondo) * 100);
 
   const getBadgeStyle = (estado: string) => {
     switch (estado) {
@@ -515,7 +567,9 @@ export default function AdminPanel() {
                 Panel Directiva
               </span>
             </div>
-            <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300 tracking-tight mb-2">SINDICATO PYC</h1>
+            <h1 className="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-300 tracking-tight mb-2">
+              {editNombreSindicato || 'SINDICATO'}
+            </h1>
             <p className="text-sm font-medium text-blue-200/80 uppercase tracking-widest">Centro de Mando Operativo</p>
           </div>
 
@@ -593,6 +647,32 @@ export default function AdminPanel() {
               <span className="text-4xl font-black relative z-10">${loadingDatos ? '...' : fondoRecaudado.toLocaleString('es-CL')}</span>
             </div>
           </div>
+
+          {/* === SECCIÓN DE IDENTIDAD DEL SINDICATO === */}
+          <section className="bg-white/90 backdrop-blur-xl border border-white rounded-[2rem] shadow-xl shadow-slate-200/50 p-8 mb-12">
+            <div className="flex items-center gap-4 mb-8">
+              <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white p-3 rounded-xl shadow-lg shadow-indigo-500/30 text-xl">🎨</div>
+              <div>
+                <h3 className="text-xl font-black text-slate-800">Identidad de la Organización</h3>
+                <p className="text-sm text-slate-500 font-medium mt-1">Personaliza el nombre y logo de esta instancia. Los cambios se reflejarán en tiempo real en la barra superior.</p>
+              </div>
+            </div>
+            <form onSubmit={guardarCambiosSindicato} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Nombre Oficial</label>
+                <input type="text" required value={editNombreSindicato} onChange={e => setEditNombreSindicato(e.target.value)} className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition-all font-bold text-slate-700" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">URL del Logo</label>
+                <input type="url" value={editLogoSindicato} onChange={e => setEditLogoSindicato(e.target.value)} placeholder="https://..." className="w-full bg-slate-50/50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition-all font-medium text-slate-700" />
+              </div>
+              <div className="md:col-span-2 flex justify-end">
+                <button type="submit" disabled={guardandoSindicato} className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-black px-8 py-3.5 rounded-2xl transition-all shadow-lg shadow-indigo-500/25 text-sm tracking-wide">
+                  {guardandoSindicato ? 'Guardando...' : 'Guardar Cambios Visuales'}
+                </button>
+              </div>
+            </form>
+          </section>
 
           {/* === SECCIÓN DE BANDEJA DE POSTULACIONES === */}
           <section className="bg-white/90 backdrop-blur-xl border border-white rounded-[2rem] shadow-xl shadow-slate-200/50 overflow-hidden relative">

@@ -13,7 +13,7 @@ export default function DashboardLayout({
   const isAdminArea = pathname?.startsWith('/dashboard/admin');
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-950 text-slate-100">
+    <div className="flex flex-col min-h-screen bg-[#f4f7fb] text-slate-900">
       {!isAdminArea && <Navbar />}
       
       <main className="flex-grow">

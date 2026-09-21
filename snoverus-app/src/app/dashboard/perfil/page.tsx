@@ -55,6 +55,14 @@ export default function PerfilPage() {
     return name.substring(0, 2).toUpperCase();
   };
 
+  // Función para definir la etiqueta correcta según el rol
+  const getEtiquetaRol = (rol: string) => {
+    const r = String(rol || '').toLowerCase();
+    if (r === 'superadmin') return '👑 ROOT / SUPERADMIN';
+    if (r === 'admin' || r === 'administrador') return 'Administrador del Sistema';
+    return 'Socio Activo';
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -81,8 +89,8 @@ export default function PerfilPage() {
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
                   {profile?.full_name || 'Socio Sindicato PYC'}
                 </h2>
-                <p className="text-slate-500 font-medium text-sm capitalize">
-                  {profile?.role === 'admin' ? 'Administrador del Sistema' : 'Socio Activo'}
+                <p className="text-slate-500 font-bold text-sm uppercase tracking-wider mt-1">
+                  {getEtiquetaRol(profile?.role)}
                 </p>
               </div>
             </div>
