@@ -36,3 +36,4 @@ cd snoverus-app
 
 Vercel:
 https://sindicato-py-d6qwpqegd-sindicato-py-c.vercel.app
+
