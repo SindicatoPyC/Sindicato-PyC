@@ -25,31 +25,37 @@ export default function CredencialPage() {
     if (!isMounted) return;
 
     async function fetchSocioData() {
-      const cookies = document.cookie.split(';');
-      const sessionCookie = cookies.find(c => c.trim().startsWith('sb-sindicato-session='));
-      
-      if (sessionCookie) {
-        const rutSesion = sessionCookie.split('=')[1];
+      try {
+        const supabase = createClient();
         
-        try {
-          const supabase = createClient();
-          const { data, error } = await supabase
-            .from('usuarios')
-            .select('*')
-            .eq('rut', rutSesion)
-            .single();
-
-          if (data && !error) {
-            setSocio({
-              nombres: data.nombres || 'Socio',
-              apellidos: data.apellidos || 'Snoverus',
-              rut: data.rut,
-              rol: data.rol === 'Administrador' ? 'Directiva' : 'Socio Activo'
-            });
-          }
-        } catch (error) {
-          console.error("Error cargando perfil:", error);
+        // 1. Obtener el usuario autenticado de forma segura a través de Supabase Auth
+        const { data: { user }, error: authError } = await supabase.auth.getUser();
+        
+        if (authError || !user) {
+          throw new Error("No hay sesión activa");
         }
+
+        // 2. Buscar el perfil usando el ID único del usuario, no un RUT sacado de una cookie
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (error) throw error;
+
+        if (data) {
+          setSocio({
+            nombres: data.nombres || data.full_name || 'Socio',
+            apellidos: data.apellidos || 'Snoverus',
+            rut: data.rut || '---',
+            // Adaptado para leer el rol correcto según tu esquema
+            rol: (data.rol === 'Administrador' || data.role === 'admin') ? 'Directiva' : 'Socio Activo'
+          });
+        }
+      } catch (error) {
+        console.error("Error cargando perfil:", error);
+        setSocio(prev => ({ ...prev, nombres: "Error al cargar" }));
       }
     }
 
@@ -69,15 +75,10 @@ export default function CredencialPage() {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
-        // 1. Borrar el registro de la tabla pública 'usuarios'
-        if (socio.rut) {
-          await supabase.from('usuarios').delete().eq('rut', socio.rut);
-        }
-
-        // 2. Borrar el registro de la tabla 'profiles'
+        // Borrar el registro de la tabla 'profiles'
         await supabase.from('profiles').delete().eq('id', user.id);
 
-        // 3. Ejecutar la función RPC para destruir la cuenta de Auth
+        // Ejecutar la función RPC para destruir la cuenta de Auth
         const { error: rpcError } = await supabase.rpc('delete_my_account');
         if (rpcError) {
           console.error("Error al borrar cuenta auth:", rpcError);
@@ -85,11 +86,11 @@ export default function CredencialPage() {
         }
       }
 
-      // 4. Cerrar sesión y limpiar cookies locales
+      // Cerrar sesión y limpiar cookies locales
       await supabase.auth.signOut();
       document.cookie = "sb-sindicato-session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
 
-      // 5. Expulsar a la página principal
+      // Expulsar a la página principal
       router.push("/");
     } catch (error) {
       console.error("Error al eliminar la cuenta:", error);
@@ -98,7 +99,7 @@ export default function CredencialPage() {
     }
   };
 
-  const qrUrl = socio.rut 
+  const qrUrl = socio.rut && socio.rut !== '---'
     ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=SindicatoSnoverus_Validacion_${socio.rut}`
     : 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=Cargando...';
 

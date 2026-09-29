@@ -10,21 +10,31 @@ export default function SuperAdminPanel() {
   const [isMounted, setIsMounted] = useState(false);
   const [validando, setValidando] = useState(true);
 
-  // Estados para datos globales
+  // Sistema de navegación horizontal
+  const [activeTab, setActiveTab] = useState('dashboard');
+
+  // Estados Globales
   const [sindicatos, setSindicatos] = useState<any[]>([]);
   const [usuarios, setUsuarios] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Estados para formulario de nuevo Sindicato
+  // Formularios Sindicatos
   const [nombreSindicato, setNombreSindicato] = useState('');
   const [rutSindicato, setRutSindicato] = useState('');
   const [logoSindicato, setLogoSindicato] = useState('');
   const [creandoSindicato, setCreandoSindicato] = useState(false);
 
-  // Estado para modal de asignación de tenant a usuario
+  // Modales
+  const [sindicatoSeleccionado, setSindicatoSeleccionado] = useState<any>(null);
+  const [editNombreSindicato, setEditNombreSindicato] = useState('');
+  const [editRutSindicato, setEditRutSindicato] = useState('');
+  const [editLogoSindicato, setEditLogoSindicato] = useState('');
+  const [guardandoSindicato, setGuardandoSindicato] = useState(false);
+
   const [usuarioSeleccionado, setUsuarioSeleccionado] = useState<any>(null);
   const [nuevoRol, setNuevoRol] = useState('socio');
   const [nuevoSindicatoId, setNuevoSindicatoId] = useState<string>('');
+  const [nuevoEstadoUsuario, setNuevoEstadoUsuario] = useState('activo');
   const [guardandoAsignacion, setGuardandoAsignacion] = useState(false);
 
   useEffect(() => {
@@ -32,9 +42,7 @@ export default function SuperAdminPanel() {
   }, []);
 
   useEffect(() => {
-    if (isMounted) {
-      validarAccesoSuperAdmin();
-    }
+    if (isMounted) validarAccesoSuperAdmin();
   }, [isMounted]);
 
   const validarAccesoSuperAdmin = async () => {
@@ -42,16 +50,8 @@ export default function SuperAdminPanel() {
     const { data: { user } } = await supabase.auth.getUser();
     
     if (user) {
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-        
-      const rolUsuario = String(data?.role || '').trim().toLowerCase();
-      
-      // Solo permitimos acceso si el rol es estrictamente superadmin
-      if (rolUsuario === 'superadmin') {
+      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      if (String(data?.role || '').trim().toLowerCase() === 'superadmin') {
         setValidando(false);
         fetchSuperAdminData();
       } else {
@@ -66,277 +66,477 @@ export default function SuperAdminPanel() {
   const fetchSuperAdminData = async () => {
     try {
       const supabase = createClient();
-
-      // Cargar todos los sindicatos
       const { data: sindData } = await supabase.from('sindicatos').select('*').order('id', { ascending: true });
       if (Array.isArray(sindData)) setSindicatos(sindData);
 
-      // Cargar todos los perfiles de usuarios globales
       const { data: usersData } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
       if (Array.isArray(usersData)) setUsuarios(usersData);
-
     } catch (err) {
-      console.error("Error cargando datos de Superadmin:", err);
+      console.error("Error:", err);
     } finally {
       setLoading(false);
     }
   };
 
+  // --- MÉTODOS DE SINDICATOS ---
   const handleCrearSindicato = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreandoSindicato(true);
     try {
       const supabase = createClient();
       const { error } = await supabase.from('sindicatos').insert([{
-        nombre: nombreSindicato,
-        rut_sindicato: rutSindicato,
-        logo_url: logoSindicato.trim() !== '' ? logoSindicato.trim() : null,
-        estado: 'Activo'
+        nombre: nombreSindicato, rut_sindicato: rutSindicato, logo_url: logoSindicato.trim() !== '' ? logoSindicato.trim() : null, estado: 'activo'
       }]);
-
       if (error) throw error;
-
-      alert('✅ Sindicato creado exitosamente.');
-      setNombreSindicato('');
-      setRutSindicato('');
-      setLogoSindicato('');
+      alert('✅ Organización creada exitosamente.');
+      setNombreSindicato(''); setRutSindicato(''); setLogoSindicato('');
+      setActiveTab('tenants');
       fetchSuperAdminData();
-    } catch (err: any) {
-      alert('❌ Error al crear sindicato: ' + err.message);
-    } finally {
-      setCreandoSindicato(false);
-    }
+    } catch (err: any) { alert('❌ Error: ' + err.message); } 
+    finally { setCreandoSindicato(false); }
   };
 
-  const abrirModalAsignacion = (user: any) => {
-    setUsuarioSeleccionado(user);
-    setNuevoRol(user.role || 'socio');
-    setNuevoSindicatoId(user.sindicato_id ? String(user.sindicato_id) : '');
-  };
-
-  const guardarAsignacionTenant = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!usuarioSeleccionado) return;
-    setGuardandoAsignacion(true);
+  const toggleEstadoSindicato = async (id: number, estadoActual: string) => {
+    const nuevoEstado = estadoActual.toLowerCase() === 'activo' ? 'suspendido' : 'activo';
+    if (!window.confirm(`⚠️ ¿Estás seguro de que deseas ${nuevoEstado === 'suspendido' ? 'SUSPENDER' : 'ACTIVAR'} esta organización?`)) return;
 
     try {
       const supabase = createClient();
-      const { error } = await supabase.from('profiles').update({
-        role: nuevoRol,
-        sindicato_id: nuevoSindicatoId ? Number(nuevoSindicatoId) : null
-      }).eq('id', usuarioSeleccionado.id);
-
+      const { error } = await supabase.from('sindicatos').update({ estado: nuevoEstado }).eq('id', id);
       if (error) throw error;
+      fetchSuperAdminData();
+    } catch (err: any) { alert('Error: ' + err.message); }
+  };
 
-      alert('✅ Usuario actualizado y asignado a la organización correctamente.');
+  const guardarEdicionSindicato = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGuardandoSindicato(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('sindicatos').update({
+        nombre: editNombreSindicato, rut_sindicato: editRutSindicato, logo_url: editLogoSindicato.trim() !== '' ? editLogoSindicato.trim() : null
+      }).eq('id', sindicatoSeleccionado.id);
+      if (error) throw error;
+      setSindicatoSeleccionado(null);
+      fetchSuperAdminData();
+    } catch (err: any) { alert('❌ Error: ' + err.message); } 
+    finally { setGuardandoSindicato(false); }
+  };
+
+  // --- MÉTODOS DE USUARIOS ---
+  const guardarAsignacionTenant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setGuardandoAsignacion(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('profiles').update({
+        role: nuevoRol, sindicato_id: nuevoSindicatoId ? Number(nuevoSindicatoId) : null, estado: nuevoEstadoUsuario
+      }).eq('id', usuarioSeleccionado.id);
+      if (error) throw error;
       setUsuarioSeleccionado(null);
       fetchSuperAdminData();
-    } catch (err: any) {
-      alert('❌ Error al actualizar usuario: ' + err.message);
-    } finally {
-      setGuardandoAsignacion(false);
-    }
+    } catch (err: any) { alert('❌ Error: ' + err.message); } 
+    finally { setGuardandoAsignacion(false); }
+  };
+
+  // Nuevo método para Bloquear/Restaurar usuario directamente desde la tabla
+  const toggleEstadoUsuario = async (id: string, estadoActual: string) => {
+    const nuevoEstado = estadoActual.toLowerCase() === 'activo' ? 'suspendido' : 'activo';
+    if (!window.confirm(`⚠️ ¿Estás seguro de que deseas ${nuevoEstado === 'suspendido' ? 'BLOQUEAR' : 'RESTAURAR'} a este usuario?`)) return;
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('profiles').update({ estado: nuevoEstado }).eq('id', id);
+      if (error) throw error;
+      fetchSuperAdminData();
+    } catch (err: any) { alert('Error: ' + err.message); }
+  };
+
+  // --- FUNCIONES EXTRA SUPERADMIN ---
+  const exportarUsuariosCSV = () => {
+    const headers = ['ID', 'Nombre_Completo', 'RUT', 'Email', 'Rol', 'Estado', 'Sindicato_ID'];
+    const csvContent = [
+      headers.join(','),
+      ...usuarios.map(u => [
+        u.id, 
+        `"${u.full_name || 'Sin Nombre'}"`, 
+        u.rut || '', 
+        u.email || '', 
+        u.role || 'socio', 
+        u.estado || 'activo', 
+        u.sindicato_id || 'Global'
+      ].join(','))
+    ].join('\n');
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.setAttribute('download', `Auditoria_Usuarios_${new Date().toLocaleDateString('es-CL')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   if (!isMounted || validando) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
+    return <div className="h-screen bg-slate-900 flex items-center justify-center"><div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>;
   }
 
+  // Cálculos de métricas SaaS corregidos
+  const tenantsActivos = sindicatos.filter(s => (s.estado || 'activo').toLowerCase() === 'activo').length;
+  
+  // Ahora el KPI suma a los suspendidos individualmente + los que pertenecen a un Sindicato Suspendido
+  const usuariosSuspendidos = usuarios.filter(u => {
+    const estadoIndividual = (u.estado || 'activo').toLowerCase() === 'suspendido';
+    const tenantUsuario = sindicatos.find(s => s.id === u.sindicato_id);
+    const estadoTenant = tenantUsuario ? (tenantUsuario.estado || 'activo').toLowerCase() === 'suspendido' : false;
+    return estadoIndividual || estadoTenant;
+  }).length;
+  
+  // Métricas de roles
+  const superAdminsCount = usuarios.filter(u => u.role === 'superadmin').length;
+  const adminsCount = usuarios.filter(u => u.role === 'admin').length;
+  const sociosCount = usuarios.filter(u => !u.role || u.role === 'socio').length;
+
   return (
-    <div className="min-h-screen bg-[#f4f7fb] font-sans pb-24 text-slate-900 selection:bg-purple-300 relative overflow-hidden">
+    <div className="flex h-screen bg-[#f4f7fb] font-sans overflow-hidden text-slate-900">
       
-      <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-purple-400/20 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
-      
-      <div className="p-6 md:p-10 relative z-10 max-w-7xl mx-auto space-y-12">
-        
-        {/* HEADER SUPERADMIN */}
-        <div className="bg-gradient-to-br from-slate-900 via-purple-950 to-slate-900 rounded-[2.5rem] shadow-2xl p-8 md:p-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border border-purple-500/30">
-          <div>
-            <span className="bg-gradient-to-r from-purple-500 to-indigo-400 text-white text-[11px] font-black uppercase tracking-[0.2em] px-4 py-1.5 rounded-full shadow-lg">
-              Super Admin SaaS
-            </span>
-            <h1 className="text-4xl md:text-5xl font-black text-white tracking-tight mt-3 mb-2">
-              Panel Global de Tenants
-            </h1>
-            <p className="text-sm font-medium text-purple-200/80 uppercase tracking-widest">Gestión Centralizada de Sindicatos</p>
-          </div>
-          <div className="flex gap-4">
-            <Link href="/dashboard/admin" className="px-6 py-3.5 bg-white/10 hover:bg-white/20 text-white border border-white/10 rounded-2xl text-sm font-bold transition-all">
-              ← Panel Admin Sindicato
-            </Link>
+      {/* SIDEBAR */}
+      <aside className="w-72 bg-slate-900 text-white flex flex-col shadow-2xl relative z-20">
+        <div className="p-8 border-b border-white/5 bg-slate-950/50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-indigo-500 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30">
+              <span className="text-xl font-black">⚡</span>
+            </div>
+            <div>
+              <h1 className="font-black text-xl tracking-tight leading-none">Master SaaS</h1>
+              <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest mt-1">Control Global</p>
+            </div>
           </div>
         </div>
 
-        {/* SECCIÓN 1: CREAR NUEVO SINDICATO */}
-        <section className="bg-white/90 backdrop-blur-xl border border-white rounded-[2rem] shadow-xl p-8">
-          <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-3">
-            <span className="p-2.5 bg-purple-100 text-purple-600 rounded-xl text-lg">🏢</span> 
-            Registrar Nueva Organización (Sindicato)
-          </h3>
-          <form onSubmit={handleCrearSindicato} className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Nombre del Sindicato</label>
-              <input type="text" required value={nombreSindicato} onChange={e => setNombreSindicato(e.target.value)} placeholder="Ej: Sindicato Minero Sur" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-purple-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">RUT del Sindicato</label>
-              <input type="text" required value={rutSindicato} onChange={e => setRutSindicato(e.target.value)} placeholder="Ej: 70.123.456-7" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-purple-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Logo URL (Opcional)</label>
-              <input type="url" value={logoSindicato} onChange={e => setLogoSindicato(e.target.value)} placeholder="https://..." className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-medium text-slate-700 focus:bg-white focus:ring-2 focus:ring-purple-500" />
-            </div>
-            <div className="md:col-span-3 flex justify-end">
-              <button type="submit" disabled={creandoSindicato} className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-black px-8 py-3.5 rounded-2xl shadow-lg shadow-purple-500/25 text-sm">
-                {creandoSindicato ? 'Creando Sindicato...' : '+ Crear Organización'}
-              </button>
-            </div>
-          </form>
-        </section>
+        <nav className="flex-1 p-6 space-y-2">
+          <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+            <span className="text-lg">📊</span> Resumen General
+          </button>
+          <button onClick={() => setActiveTab('tenants')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === 'tenants' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+            <span className="text-lg">🏢</span> Organizaciones
+          </button>
+          <button onClick={() => setActiveTab('usuarios')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === 'usuarios' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+            <span className="text-lg">👥</span> Padrón Global
+          </button>
+          <button onClick={() => setActiveTab('nuevo')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === 'nuevo' ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+            <span className="text-lg">✨</span> Registrar Nuevo
+          </button>
+        </nav>
 
-        {/* SECCIÓN 2: LISTADO DE SINDICATOS EXISTENTES */}
-        <section className="bg-white/90 backdrop-blur-xl border border-white rounded-[2rem] shadow-xl overflow-hidden">
-          <div className="p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-            <h3 className="text-xl font-black text-slate-800">Sindicatos Activos en la Plataforma</h3>
-            <span className="bg-purple-100 text-purple-700 text-xs font-black uppercase tracking-wider px-4 py-1.5 rounded-full">
-              {sindicatos.length} Tenants Registrados
-            </span>
-          </div>
-          <div className="p-2 overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[700px]">
-              <thead>
-                <tr className="text-slate-400 text-[10px] font-black uppercase tracking-[0.15em] border-b border-slate-100">
-                  <th className="p-5 pl-8">ID</th>
-                  <th className="p-5">Nombre Oficial</th>
-                  <th className="p-5">RUT</th>
-                  <th className="p-5 pr-8 text-right">Estado</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {sindicatos.map((s) => (
-                  <tr key={s.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-5 pl-8 font-mono font-bold text-slate-500">#{s.id}</td>
-                    <td className="p-5 font-extrabold text-slate-800">{s.nombre}</td>
-                    <td className="p-5 font-medium text-slate-600">{s.rut_sindicato}</td>
-                    <td className="p-5 pr-8 text-right">
-                      <span className="px-3 py-1 bg-emerald-50 text-emerald-600 border border-emerald-200 text-[10px] font-black uppercase rounded-full">
-                        {s.estado || 'Activo'}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <div className="p-6 border-t border-white/5">
+          <Link href="/dashboard/admin" className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all">
+            ⇦ Volver al Panel
+          </Link>
+        </div>
+      </aside>
 
-        {/* SECCIÓN 3: PADRÓN GLOBAL Y ASIGNACIÓN DE TENANTS */}
-        <section className="bg-white/90 backdrop-blur-xl border border-white rounded-[2rem] shadow-xl overflow-hidden">
-          <div className="p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-            <h3 className="text-xl font-black text-slate-800">Padrón Global de Usuarios y Asignación de Roles</h3>
-            <span className="bg-blue-100 text-blue-700 text-xs font-black uppercase tracking-wider px-4 py-1.5 rounded-full">
-              {usuarios.length} Usuarios Totales
-            </span>
-          </div>
-          <div className="p-2 overflow-x-auto">
-            <table className="w-full text-left border-collapse min-w-[800px]">
-              <thead>
-                <tr className="text-slate-400 text-[10px] font-black uppercase tracking-[0.15em] border-b border-slate-100">
-                  <th className="p-5 pl-8">Usuario</th>
-                  <th className="p-5">RUT / Email</th>
-                  <th className="p-5">Rol Actual</th>
-                  <th className="p-5">Sindicato Asignado (Tenant ID)</th>
-                  <th className="p-5 pr-8 text-right">Acción</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {usuarios.map((user) => {
-                  const sindicatoAsociado = sindicatos.find(s => s.id === user.sindicato_id);
-                  return (
-                    <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="p-5 pl-8 font-extrabold text-slate-800">{user.full_name || 'Sin nombre'}</td>
-                      <td className="p-5 text-xs text-slate-500 font-medium">
-                        <span className="block font-bold text-slate-700">{user.rut}</span>
-                        {user.email}
-                      </td>
-                      <td className="p-5">
-                        <span className="px-3 py-1 bg-slate-100 text-slate-600 border border-slate-200 text-[10px] font-black uppercase rounded-full">
-                          {user.role || 'socio'}
-                        </span>
-                      </td>
-                      <td className="p-5 font-bold text-slate-700">
-                        {sindicatoAsociado ? (
-                          <span className="text-purple-600 bg-purple-50 px-3 py-1 rounded-xl border border-purple-100 text-xs">
-                            {sindicatoAsociado.nombre} (ID: {sindicatoAsociado.id})
-                          </span>
-                        ) : (
-                          <span className="text-amber-600 bg-amber-50 px-3 py-1 rounded-xl border border-amber-100 text-xs">
-                            Sin Sindicato Asignado
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-5 pr-8 text-right">
-                        <button 
-                          onClick={() => abrirModalAsignacion(user)}
-                          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-black rounded-xl transition-all shadow-md"
-                        >
-                          Modificar Tenant / Rol
-                        </button>
-                      </td>
+      {/* ÁREA DE CONTENIDO PRINCIPAL */}
+      <main className="flex-1 overflow-y-auto relative">
+        <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-indigo-400/10 rounded-full blur-[100px] pointer-events-none -mr-20 -mt-20"></div>
+        
+        <div className="p-10 max-w-7xl mx-auto space-y-8 relative z-10">
+
+          {/* TAB 1: DASHBOARD */}
+          {activeTab === 'dashboard' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <header className="mb-8 flex justify-between items-end">
+                <div>
+                  <h2 className="text-3xl font-black text-slate-800 tracking-tight">Rendimiento de la Plataforma</h2>
+                  <p className="text-slate-500 font-medium">Estadísticas en tiempo real del ecosistema Multi-Tenant.</p>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={exportarUsuariosCSV} className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-black px-4 py-2.5 rounded-xl text-xs shadow-sm flex items-center gap-2 transition-all">
+                    <span>⬇️</span> Exportar Padrón (CSV)
+                  </button>
+                </div>
+              </header>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div className="bg-white rounded-[2rem] p-6 shadow-xl shadow-slate-200/50 border border-slate-100 relative overflow-hidden">
+                  <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center text-2xl mb-4">🏢</div>
+                  <h4 className="text-3xl font-black text-slate-800">{sindicatos.length}</h4>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Total Tenants</p>
+                </div>
+                <div className="bg-white rounded-[2rem] p-6 shadow-xl shadow-slate-200/50 border border-slate-100 relative overflow-hidden">
+                  <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center text-2xl mb-4">🟢</div>
+                  <h4 className="text-3xl font-black text-slate-800">{tenantsActivos}</h4>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Tenants Activos</p>
+                </div>
+                <div className="bg-white rounded-[2rem] p-6 shadow-xl shadow-slate-200/50 border border-slate-100 relative overflow-hidden">
+                  <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center text-2xl mb-4">👥</div>
+                  <h4 className="text-3xl font-black text-slate-800">{usuarios.length}</h4>
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Usuarios Globales</p>
+                </div>
+                <div className="bg-red-50 rounded-[2rem] p-6 shadow-xl shadow-red-200/50 border border-red-100 relative overflow-hidden">
+                  <div className="w-12 h-12 bg-white text-red-600 rounded-2xl flex items-center justify-center text-2xl mb-4 shadow-sm">⛔</div>
+                  <h4 className="text-3xl font-black text-red-700">{usuariosSuspendidos}</h4>
+                  <p className="text-xs font-bold text-red-500 uppercase tracking-widest mt-1">Accesos Bloqueados</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {/* Panel Izquierdo: Auditoría Reciente */}
+                <div className="md:col-span-2 bg-white rounded-[2rem] p-8 shadow-xl shadow-slate-200/50 border border-slate-100">
+                  <h3 className="text-lg font-black text-slate-800 mb-6">Últimos Registros (Auditoría)</h3>
+                  <div className="space-y-4">
+                    {usuarios.slice(0, 5).map(u => (
+                      <div key={u.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center shadow-sm text-lg font-bold text-slate-400 border border-slate-200">
+                            {u.full_name ? u.full_name.charAt(0).toUpperCase() : '?'}
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800">{u.full_name || 'Usuario Nuevo'}</p>
+                            <p className="text-xs font-medium text-slate-500">{u.email}</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <span className="px-3 py-1 bg-slate-200 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-widest">{u.role || 'socio'}</span>
+                          <p className="text-[10px] font-bold text-slate-400 mt-1">{new Date(u.created_at).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Panel Derecho */}
+                <div className="space-y-8">
+                  <div className="bg-white rounded-[2rem] p-8 shadow-xl shadow-slate-200/50 border border-slate-100">
+                    <h3 className="text-lg font-black text-slate-800 mb-6">Distribución de Permisos</h3>
+                    <div className="space-y-5">
+                      <div>
+                        <div className="flex justify-between text-xs font-bold mb-2">
+                          <span className="text-slate-600">Socios Base</span>
+                          <span className="text-slate-800">{sociosCount}</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2"><div className="bg-blue-400 h-2 rounded-full" style={{ width: `${(sociosCount/usuarios.length)*100}%` }}></div></div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-xs font-bold mb-2">
+                          <span className="text-slate-600">Administradores (Directiva)</span>
+                          <span className="text-slate-800">{adminsCount}</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2"><div className="bg-amber-400 h-2 rounded-full" style={{ width: `${(adminsCount/usuarios.length)*100}%` }}></div></div>
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-xs font-bold mb-2">
+                          <span className="text-slate-600">Super Admins</span>
+                          <span className="text-slate-800">{superAdminsCount}</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2"><div className="bg-indigo-500 h-2 rounded-full" style={{ width: `${(superAdminsCount/usuarios.length)*100}%` }}></div></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-900 rounded-[2rem] p-8 shadow-xl shadow-indigo-500/10 border border-slate-800">
+                    <h3 className="text-lg font-black text-white mb-6">Salud del Sistema</h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Base de Datos</span><span className="flex items-center gap-2 text-xs font-bold text-emerald-400"><div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div> Conectado</span></div>
+                      <div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Storage (Bucket)</span><span className="flex items-center gap-2 text-xs font-bold text-emerald-400"><div className="w-2 h-2 bg-emerald-400 rounded-full"></div> Operativo</span></div>
+                      <div className="flex items-center justify-between"><span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Auth (Supabase)</span><span className="flex items-center gap-2 text-xs font-bold text-emerald-400"><div className="w-2 h-2 bg-emerald-400 rounded-full"></div> Seguro</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: GESTIÓN DE SINDICATOS */}
+          {activeTab === 'tenants' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <header className="mb-8 flex justify-between items-end">
+                <div>
+                  <h2 className="text-3xl font-black text-slate-800 tracking-tight">Gestor de Organizaciones</h2>
+                  <p className="text-slate-500 font-medium">Administra los accesos y configuraciones de cada sindicato.</p>
+                </div>
+                <button onClick={() => setActiveTab('nuevo')} className="bg-slate-900 hover:bg-slate-800 text-white font-black px-6 py-3 rounded-xl text-sm transition-all shadow-lg">+ Nuevo Tenant</button>
+              </header>
+
+              <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      <th className="p-6 pl-8">Organización</th>
+                      <th className="p-6">RUT</th>
+                      <th className="p-6 text-center">Estatus</th>
+                      <th className="p-6 pr-8 text-right">Controles</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {sindicatos.map((s) => {
+                      const isActivo = (s.estado || 'activo').toLowerCase() === 'activo';
+                      return (
+                        <tr key={s.id} className={`hover:bg-slate-50 transition-colors ${!isActivo ? 'bg-red-50/30' : ''}`}>
+                          <td className="p-6 pl-8">
+                            <span className={`font-extrabold block text-sm ${!isActivo ? 'text-red-700' : 'text-slate-800'}`}>{s.nombre}</span>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ID: {s.id}</span>
+                          </td>
+                          <td className="p-6 font-bold text-slate-600 text-sm">{s.rut_sindicato}</td>
+                          <td className="p-6 text-center">
+                            <span className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest rounded-full border ${isActivo ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-red-50 text-red-600 border-red-200'}`}>
+                              {s.estado || 'activo'}
+                            </span>
+                          </td>
+                          <td className="p-6 pr-8 flex justify-end gap-2">
+                            <button onClick={() => { setSindicatoSeleccionado(s); setEditNombreSindicato(s.nombre); setEditRutSindicato(s.rut_sindicato); setEditLogoSindicato(s.logo_url || ''); }} className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-black rounded-xl transition-all shadow-sm">
+                              Editar
+                            </button>
+                            <button onClick={() => toggleEstadoSindicato(s.id, s.estado || 'activo')} className={`px-4 py-2 text-white text-xs font-black rounded-xl transition-all shadow-md ${isActivo ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}>
+                              {isActivo ? 'Bloquear' : 'Restaurar'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 3: PADRÓN GLOBAL DE USUARIOS */}
+          {activeTab === 'usuarios' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <header className="mb-8">
+                <h2 className="text-3xl font-black text-slate-800 tracking-tight">Directorio Global de Cuentas</h2>
+                <p className="text-slate-500 font-medium">Administra niveles de acceso, mueve usuarios entre tenants o bloquea cuentas.</p>
+              </header>
+
+              <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      <th className="p-6 pl-8">Usuario</th>
+                      <th className="p-6">RUT / Permisos</th>
+                      <th className="p-6">Tenant Asignado</th>
+                      <th className="p-6 pr-8 text-right">Controles</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {usuarios.map((user) => {
+                      const sindicatoAsociado = sindicatos.find(s => s.id === user.sindicato_id);
+                      const estadoPersonal = (user.estado || 'activo').toLowerCase() === 'activo';
+                      
+                      return (
+                        <tr key={user.id} className={`transition-colors ${estadoPersonal ? 'hover:bg-slate-50' : 'bg-red-50/50'}`}>
+                          <td className="p-6 pl-8">
+                            <div className="flex items-center gap-2">
+                              <span className={`font-extrabold block text-sm ${!estadoPersonal ? 'text-red-700' : 'text-slate-800'}`}>{user.full_name || 'Sin nombre'}</span>
+                              {!estadoPersonal && <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded text-[8px] font-black uppercase">Bloqueado</span>}
+                            </div>
+                            <span className="text-[10px] font-bold text-slate-400 truncate w-48 block">{user.email}</span>
+                          </td>
+                          <td className="p-6">
+                            <span className="font-bold text-slate-600 block text-sm mb-1">{user.rut}</span>
+                            <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded-md border ${user.role === 'superadmin' ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : user.role === 'admin' ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                              {user.role || 'socio'}
+                            </span>
+                          </td>
+                          <td className="p-6">
+                            {sindicatoAsociado ? (
+                              <div className="flex items-center gap-2">
+                                <span className={`w-2 h-2 rounded-full ${sindicatoAsociado.estado === 'suspendido' ? 'bg-red-500' : 'bg-emerald-500'}`}></span>
+                                <span className="font-bold text-slate-700 text-sm">{sindicatoAsociado.nombre}</span>
+                              </div>
+                            ) : <span className="text-xs font-bold text-slate-400 italic">Global / No asignado</span>}
+                          </td>
+                          <td className="p-6 pr-8 text-right flex justify-end gap-2">
+                            <button onClick={() => { setUsuarioSeleccionado(user); setNuevoRol(user.role || 'socio'); setNuevoSindicatoId(user.sindicato_id ? String(user.sindicato_id) : ''); setNuevoEstadoUsuario(user.estado || 'activo'); }} className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-black rounded-xl transition-all shadow-sm">
+                              Modificar
+                            </button>
+                            <button onClick={() => toggleEstadoUsuario(user.id, user.estado || 'activo')} className={`px-4 py-2 text-white text-xs font-black rounded-xl transition-all shadow-md ${estadoPersonal ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}>
+                              {estadoPersonal ? 'Bloquear' : 'Restaurar'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: CREAR NUEVO SINDICATO */}
+          {activeTab === 'nuevo' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl mx-auto">
+              <header className="mb-8 text-center">
+                <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-3xl mx-auto mb-4 shadow-sm border border-indigo-200">🏢</div>
+                <h2 className="text-3xl font-black text-slate-800 tracking-tight">Onboarding de Tenant</h2>
+                <p className="text-slate-500 font-medium">Crea un espacio independiente en la base de datos.</p>
+              </header>
+
+              <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 p-10">
+                <form onSubmit={handleCrearSindicato} className="space-y-6">
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nombre Oficial</label>
+                    <input type="text" required value={nombreSindicato} onChange={e => setNombreSindicato(e.target.value)} placeholder="Ej: Sindicato Nacional..." className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">RUT Tributario</label>
+                    <input type="text" required value={rutSindicato} onChange={e => setRutSindicato(e.target.value)} placeholder="Ej: 70.123.456-7" className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Logotipo Corporativo (URL)</label>
+                    <input type="url" value={logoSindicato} onChange={e => setLogoSindicato(e.target.value)} placeholder="https://..." className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-medium text-slate-700 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" />
+                  </div>
+                  <button type="submit" disabled={creandoSindicato} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-indigo-500/30 text-sm uppercase tracking-widest mt-8 transition-all">
+                    {creandoSindicato ? 'Construyendo Entorno...' : 'Desplegar Nuevo Sindicato'}
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
+
+        </div>
+      </main>
+
+      {/* --- MODALES --- */}
+      {sindicatoSeleccionado && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setSindicatoSeleccionado(null)}>
+          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200" onClick={e => e.stopPropagation()}>
+            <div className="p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+              <div><h3 className="text-xl font-black text-slate-800">Editar Tenant</h3><p className="text-[10px] font-black text-slate-400 uppercase mt-1">ID: {sindicatoSeleccionado.id}</p></div>
+              <button onClick={() => setSindicatoSeleccionado(null)} className="text-slate-400 font-bold text-xl hover:text-slate-800">✕</button>
+            </div>
+            <form onSubmit={guardarEdicionSindicato} className="p-8 space-y-5">
+              <div><label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Nombre</label><input type="text" required value={editNombreSindicato} onChange={e => setEditNombreSindicato(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm font-bold text-slate-700 outline-none" /></div>
+              <div><label className="block text-[10px] font-black text-slate-400 uppercase mb-2">RUT</label><input type="text" required value={editRutSindicato} onChange={e => setEditRutSindicato(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm font-bold text-slate-700 outline-none" /></div>
+              <div><label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Logo</label><input type="url" value={editLogoSindicato} onChange={e => setEditLogoSindicato(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-sm font-bold text-slate-700 outline-none" /></div>
+              <button type="submit" disabled={guardandoSindicato} className="w-full bg-slate-900 text-white font-black py-4 rounded-xl mt-4">{guardandoSindicato ? 'Guardando...' : 'Aplicar Cambios'}</button>
+            </form>
           </div>
-        </section>
+        </div>
+      )}
 
-      </div>
-
-      {/* MODAL DE ASIGNACIÓN DE SINDICATO Y ROL */}
       {usuarioSeleccionado && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setUsuarioSeleccionado(null)}>
           <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md overflow-hidden border border-slate-200" onClick={e => e.stopPropagation()}>
             <div className="p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-black text-slate-800">Asignar Organización</h3>
-                <p className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-wider">{usuarioSeleccionado.full_name}</p>
-              </div>
-              <button onClick={() => setUsuarioSeleccionado(null)} className="w-10 h-10 bg-white border border-slate-200 rounded-full flex items-center justify-center font-bold text-slate-500">✕</button>
+              <div><h3 className="text-xl font-black text-slate-800">Gestionar Permisos</h3><p className="text-[10px] font-black text-slate-400 uppercase mt-1">{usuarioSeleccionado.full_name}</p></div>
+              <button onClick={() => setUsuarioSeleccionado(null)} className="text-slate-400 font-bold text-xl hover:text-slate-800">✕</button>
             </div>
-            
             <form onSubmit={guardarAsignacionTenant} className="p-8 space-y-5">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Rol del Usuario</label>
-                <select value={nuevoRol} onChange={e => setNuevoRol(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-purple-500">
-                  <option value="socio">Socio</option>
-                  <option value="admin">Administrador (Directiva)</option>
-                  <option value="superadmin">Super Admin</option>
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Nivel de Acceso</label>
+                <select value={nuevoRol} onChange={e => setNuevoRol(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                  <option value="socio">Socio Normal</option><option value="admin">Administrador Local</option><option value="superadmin">Super Admin Global</option>
                 </select>
               </div>
-
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Sindicato (Tenant) al que pertenece</label>
-                <select value={nuevoSindicatoId} onChange={e => setNuevoSindicatoId(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm font-bold text-slate-700 focus:bg-white focus:ring-2 focus:ring-purple-500">
-                  <option value="">-- Sin Sindicato (Global / Ninguno) --</option>
-                  {sindicatos.map(s => (
-                    <option key={s.id} value={s.id}>{s.nombre} (ID: {s.id})</option>
-                  ))}
+                <label className="block text-[10px] font-black text-slate-400 uppercase mb-2">Asignar a Organización</label>
+                <select value={nuevoSindicatoId} onChange={e => setNuevoSindicatoId(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none">
+                  <option value="">-- Sin Asignar --</option>
+                  {sindicatos.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                 </select>
               </div>
-
-              <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setUsuarioSeleccionado(null)} className="flex-1 bg-white border border-slate-200 text-slate-600 font-bold py-3.5 rounded-xl text-sm">
-                  Cancelar
-                </button>
-                <button type="submit" disabled={guardandoAsignacion} className="flex-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-black py-3.5 rounded-xl shadow-lg text-sm">
-                  {guardandoAsignacion ? 'Guardando...' : 'Guardar Cambios'}
-                </button>
-              </div>
+              <button type="submit" disabled={guardandoAsignacion} className="w-full bg-indigo-600 text-white font-black py-4 rounded-xl mt-4 shadow-lg shadow-indigo-500/20">{guardandoAsignacion ? 'Actualizando...' : 'Guardar Perfil'}</button>
             </form>
           </div>
         </div>

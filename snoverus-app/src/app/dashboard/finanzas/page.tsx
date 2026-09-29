@@ -87,7 +87,7 @@ export default function FinanzasPage() {
         const esAdministrador = rolUsuario === 'admin' || rolUsuario === 'administrador' || rolUsuario === 'directiva';
         setIsAdmin(esAdministrador);
 
-        const { data: transData } = await supabase.from('transparencia_financiera').select('*').order('id', { ascending: true });
+        const { data: transData } = await supabase.from('cuotas_sindicales').select('*').order('id', { ascending: true });
         
         if (transData && transData.length > 0) {
           const mapeados = transData.map(t => ({ id: t.id, name: t.categoria, value: Number(t.porcentaje), color: t.color_hex }));
@@ -193,8 +193,8 @@ export default function FinanzasPage() {
       if (totalPorcentaje !== 100) return alert(`⚠️ Los porcentajes deben sumar exactamente 100%. Suman ${totalPorcentaje}%.`);
 
       for (const gasto of editGastos) {
-        if (gasto.id) await supabase.from('transparencia_financiera').update({ porcentaje: gasto.value }).eq('id', gasto.id);
-        else await supabase.from('transparencia_financiera').insert({ categoria: gasto.name, porcentaje: gasto.value, color_hex: gasto.color });
+        if (gasto.id) await supabase.from('cuotas_sindicales').update({ porcentaje: gasto.value }).eq('id', gasto.id);
+        else await supabase.from('cuotas_sindicalesusuarios').insert({ categoria: gasto.name, porcentaje: gasto.value, color_hex: gasto.color });
       }
       setShowModalGrafico(false);
       fetchFinanzas(mesActualStr, new Date().getFullYear(), diasRestantes);
