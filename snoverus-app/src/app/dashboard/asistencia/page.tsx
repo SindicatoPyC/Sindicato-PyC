@@ -11,7 +11,6 @@ export default function AsistenciaPage() {
   const [perfil, setPerfil] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [baseUrl, setBaseUrl] = useState('https://sindicato-py-jmiuwzu72-sindicato-py-c.vercel.app'); // Nuevo estado para la URL
 
   // Estados de Asistencia y Modal
   const [asambleaActiva, setAsambleaActiva] = useState<any>(null);
@@ -22,9 +21,9 @@ export default function AsistenciaPage() {
   const [tituloNuevaAsamblea, setTituloNuevaAsamblea] = useState('');
   const [iniciandoAsamblea, setIniciandoAsamblea] = useState(false);
 
- useEffect(() => {
-  fetchAsistenciaData();
-}, []);
+  useEffect(() => {
+    fetchAsistenciaData();
+  }, []);
 
   async function fetchAsistenciaData() {
     setLoading(true);
@@ -221,9 +220,11 @@ export default function AsistenciaPage() {
     }
   };
 
-  // AQUÍ ESTÁ LA MAGIA: El QR ahora apunta a una URL real de tu plataforma
-  const qrCheckInUrl = asambleaActiva && baseUrl
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`${baseUrl}/asistencia/registrar/${asambleaActiva.id}`)}&color=0f172a&bgcolor=ffffff&margin=1`
+  // INYECCIÓN DE LA URL OFICIAL PARA EL QR
+  const DOMINIO_OFICIAL = 'https://sindicato-py-jmiuwzu72-sindicato-py-c.vercel.app';
+  
+  const qrCheckInUrl = asambleaActiva 
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`${DOMINIO_OFICIAL}/asistencia/registrar/${asambleaActiva.id}`)}&color=0f172a&bgcolor=ffffff&margin=1`
     : 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=SinAsambleaActiva&color=94a3b8&bgcolor=ffffff';
 
   if (loading) {
