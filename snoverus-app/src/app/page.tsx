@@ -4,6 +4,7 @@ import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from './lib/supabase';
+import { motion, AnimatePresence } from 'framer-motion';
 
 const sindicalSlides = [
   {
@@ -37,7 +38,7 @@ function LoginForm() {
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % sindicalSlides.length);
-    }, 5000);
+    }, 6000);
     return () => clearInterval(interval);
   }, []);
 
@@ -86,7 +87,7 @@ function LoginForm() {
         const redirectDestinoReal = urlParams.get('redirect');
 
         if (redirectDestinoReal) {
-          window.location.href = redirectDestinoReal; // Va directo al QR /asistencia/[id]
+          window.location.href = redirectDestinoReal; 
         } else {
           const rolUsuario = String(profileData.role || '').trim().toLowerCase();
           if (rolUsuario === 'superadmin') {
@@ -106,9 +107,15 @@ function LoginForm() {
 
   return (
     <div className="min-h-screen w-full bg-slate-950 font-sans text-slate-200 grid grid-cols-1 lg:grid-cols-12 overflow-hidden relative selection:bg-cyan-600 selection:text-white">
-      <div className="hidden lg:flex lg:col-span-5 flex-col justify-between p-12 xl:p-16 relative z-10 bg-gradient-to-br from-slate-900 via-cyan-950 to-blue-950 text-white shadow-2xl overflow-hidden">
+      
+      {/* --- COLUMNA IZQUIERDA: HERO Y CARRUSEL --- */}
+      <div className="hidden lg:flex lg:col-span-5 flex-col justify-between p-12 xl:p-16 relative z-10 bg-gradient-to-br from-[#040814] via-[#09152b] to-[#041224] text-white shadow-2xl overflow-hidden border-r border-white/5">
+        {/* Orbes de luz ambientales */}
+        <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-cyan-500/10 rounded-full blur-[120px] pointer-events-none -translate-x-1/2 -translate-y-1/2"></div>
+        <div className="absolute bottom-0 right-0 w-[600px] h-[600px] bg-blue-600/10 rounded-full blur-[150px] pointer-events-none translate-x-1/3 translate-y-1/3"></div>
+
         <div className="relative z-10 flex items-center gap-5">
-          <div className="w-16 h-16 rounded-[1.25rem] bg-white/5 border border-cyan-500/20 backdrop-blur-md flex items-center justify-center text-cyan-400 text-2xl font-black shadow-lg">
+          <div className="w-16 h-16 rounded-[1.25rem] bg-white/[0.03] border border-cyan-500/20 backdrop-blur-xl flex items-center justify-center text-cyan-400 text-2xl font-black shadow-lg shadow-cyan-500/10">
             PYC
           </div>
           <div>
@@ -118,50 +125,106 @@ function LoginForm() {
         </div>
 
         <div className="space-y-6 my-auto relative z-10">
-          <div className="relative p-8 sm:p-10 rounded-[2.5rem] bg-white/5 border border-white/10 backdrop-blur-xl shadow-2xl">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-3xl text-white mb-6 shadow-lg shadow-cyan-500/20">
-              {sindicalSlides[currentSlide].icon}
-            </div>
-            <h3 className="text-2xl font-bold text-white tracking-tight mb-4">{sindicalSlides[currentSlide].title}</h3>
-            <p className="text-slate-300 text-sm leading-relaxed font-medium min-h-[80px]">{sindicalSlides[currentSlide].description}</p>
+          <AnimatePresence mode="wait">
+            <motion.div 
+              key={currentSlide}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.5, ease: "easeOut" }}
+              className="relative p-8 sm:p-10 rounded-[2.5rem] bg-white/[0.02] border border-white/5 backdrop-blur-2xl shadow-2xl"
+            >
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center text-3xl text-white mb-6 shadow-xl shadow-cyan-500/20">
+                {sindicalSlides[currentSlide].icon}
+              </div>
+              <h3 className="text-2xl lg:text-3xl font-black text-white tracking-tight mb-4 leading-tight">{sindicalSlides[currentSlide].title}</h3>
+              <p className="text-slate-400 text-sm leading-relaxed font-medium min-h-[80px]">{sindicalSlides[currentSlide].description}</p>
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Indicadores del Carrusel */}
+          <div className="flex gap-2 pl-2">
+            {sindicalSlides.map((_, idx) => (
+              <div key={idx} className={`h-1.5 rounded-full transition-all duration-500 ${currentSlide === idx ? 'w-8 bg-cyan-400' : 'w-2 bg-white/10'}`} />
+            ))}
           </div>
         </div>
-        <div className="text-xs text-slate-500 font-medium">© 2026 Sindicato PYC</div>
+        
+        <div className="text-xs text-slate-500 font-medium relative z-10">© 2026 Sindicato PYC. Todos los derechos reservados.</div>
       </div>
 
-      <div className="lg:col-span-7 flex flex-col items-center justify-center p-6 sm:p-12 relative z-10 bg-slate-950">
-        <div className="w-full max-w-md bg-white/[0.02] p-8 sm:p-10 rounded-[2.5rem] border border-white/5 shadow-2xl backdrop-blur-3xl">
+      {/* --- COLUMNA DERECHA: FORMULARIO Y POSTULACIÓN --- */}
+      <div className="lg:col-span-7 flex flex-col items-center justify-center p-6 sm:p-12 relative z-10 bg-[#020617]">
+        {/* Luz sutil de fondo para el form */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-blue-600/5 rounded-full blur-[150px] pointer-events-none"></div>
+
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5 }}
+          className="w-full max-w-md bg-white/[0.02] p-8 sm:p-10 rounded-[2.5rem] border border-white/5 shadow-2xl backdrop-blur-3xl relative z-10"
+        >
           <div className="text-center space-y-4 mb-10">
-            <div className="inline-flex items-center gap-2 bg-cyan-500/10 border border-cyan-500/20 px-4 py-1.5 rounded-full text-cyan-400 text-xs font-black tracking-widest uppercase">✨ Portal de Socios</div>
+            <div className="inline-flex items-center gap-2 bg-cyan-500/10 border border-cyan-500/20 px-4 py-1.5 rounded-full text-cyan-400 text-xs font-black tracking-widest uppercase shadow-inner">✨ Portal de Socios</div>
             <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-white">Bienvenido</h2>
             <p className="text-slate-400 text-sm font-medium">{redirectDestino ? 'Inicia sesión para registrar tu asistencia al instante.' : 'Ingresa tus credenciales para continuar.'}</p>
           </div>
 
           {errorMsg && (
-            <div className="mb-6 p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-400 text-sm font-medium flex items-center gap-3">
-              <span>⚠️</span> <span>{errorMsg}</span>
-            </div>
+            <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="mb-6 p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-400 text-xs font-bold flex items-center gap-3 shadow-inner">
+              <span className="text-lg">⚠️</span> <span>{errorMsg}</span>
+            </motion.div>
           )}
 
           <form onSubmit={handleLogin} className="space-y-6">
-            <div className="space-y-2">
-              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">RUT del Socio</label>
-              <input type="text" required value={rut} onChange={(e) => setRut(e.target.value)} placeholder="11111111-1" className="w-full bg-black/20 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 text-sm" />
+            <div className="space-y-2 group">
+              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1 group-focus-within:text-cyan-400 transition-colors">RUT del Socio</label>
+              <input 
+                type="text" 
+                required 
+                value={rut} 
+                onChange={(e) => setRut(e.target.value)} 
+                placeholder="Ej: 11111111-1" 
+                className="w-full bg-[#0a0f1e] border border-white/5 rounded-2xl px-5 py-4 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 transition-all text-sm font-medium shadow-inner" 
+              />
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 group">
               <div className="flex justify-between items-center pl-1 pr-1">
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Contraseña</label>
-                <Link href="/forgot-password" className="text-cyan-500 hover:text-cyan-400 text-xs font-bold">¿Olvidaste tu clave?</Link>
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest group-focus-within:text-cyan-400 transition-colors">Contraseña</label>
+                <Link href="/forgot-password" className="text-slate-500 hover:text-cyan-400 text-[10px] font-bold tracking-widest uppercase transition-colors">¿Olvidaste tu clave?</Link>
               </div>
-              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••••••" className="w-full bg-black/20 border border-white/10 rounded-2xl px-5 py-4 text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500/50 text-sm" />
+              <input 
+                type="password" 
+                required 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                placeholder="••••••••••••" 
+                className="w-full bg-[#0a0f1e] border border-white/5 rounded-2xl px-5 py-4 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 focus:border-cyan-500/50 transition-all text-sm font-medium shadow-inner" 
+              />
             </div>
 
-            <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 px-8 rounded-2xl transition-all shadow-lg text-xs uppercase tracking-widest">
-              {loading ? 'Verificando...' : (redirectDestino ? 'Ingresar y Confirmar Asistencia' : 'Ingresar al Portal')}
+            <button type="submit" disabled={loading} className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black py-4 px-8 rounded-2xl transition-all shadow-[0_10px_20px_rgba(8,145,178,0.2)] hover:shadow-[0_10px_25px_rgba(8,145,178,0.4)] transform hover:-translate-y-0.5 text-xs uppercase tracking-widest flex justify-center items-center gap-2">
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div> Verificando...
+                </span>
+              ) : (redirectDestino ? 'Ingresar y Confirmar Asistencia' : 'Ingresar al Portal')}
             </button>
           </form>
-        </div>
+
+          {/* --- RESTAURADO: SECCIÓN DE POSTULACIÓN --- */}
+          <div className="mt-8 pt-8 border-t border-white/5 text-center space-y-5">
+            <p className="text-slate-400 text-xs font-medium">¿Aún no eres parte de la organización?</p>
+            <Link 
+              href="/postular" 
+              className="block w-full py-4 px-8 rounded-2xl border border-white/10 hover:bg-white/5 text-slate-300 hover:text-white font-black text-xs uppercase tracking-widest transition-all shadow-sm hover:border-cyan-500/30 hover:shadow-[0_0_15px_rgba(6,182,212,0.15)] flex items-center justify-center gap-2"
+            >
+              <span>📝</span> Postular al Sindicato
+            </Link>
+          </div>
+
+        </motion.div>
       </div>
     </div>
   );
