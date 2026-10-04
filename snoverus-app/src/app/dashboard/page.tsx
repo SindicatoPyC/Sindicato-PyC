@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { createClient } from '../lib/supabase';
+import { createClient } from '../lib/supabase';;
 import Carrusel from '../../components/Carrusel';
 
 export default function Dashboard() {
