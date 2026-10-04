@@ -57,8 +57,9 @@ export default function AsambleaPage() {
         initSala();
     }, []);
 
-    // Construcción de la URL segura para Jitsi en Web e Iframe móvil (Evita menús de marcación o app externa)
-    const jitsiUrl = `https://meet.jit.si/${roomName || 'SindicatoPYC_AsambleaGeneral'}#userInfo.displayName="${encodeURIComponent(userName)}"&userInfo.email="${encodeURIComponent(userEmail || 'socio@sindicato.cl')}"&config.startWithAudioMuted=true&config.startWithVideoMuted=false&config.prejoinPageEnabled=false&config.hideConferenceSubject=true&config.disableInviteFunctions=true`;
+    // URL optimizada con parámetros estrictos para bloquear pantallas de marcación telefónica y apps en móviles
+    const safeRoom = roomName || 'SindicatoPYC_AsambleaGeneral';
+    const jitsiUrl = `https://meet.jit.si/${safeRoom}#userInfo.displayName="${encodeURIComponent(userName)}"&userInfo.email="${encodeURIComponent(userEmail || 'socio@sindicato.cl')}"&config.startWithAudioMuted=true&config.startWithVideoMuted=false&config.prejoinPageEnabled=false&config.hideConferenceSubject=true&config.disableInviteFunctions=true&config.brandingDataUrl=&interfaceConfig.MOBILE_APP_PROMO=false&interfaceConfig.HIDE_INVITE_MORE_HEADER=true`;
 
     return (
         <div className="min-h-screen bg-[#090d16] text-slate-100 font-sans p-4 sm:p-8 md:p-12 relative overflow-x-hidden selection:bg-blue-600 selection:text-white">
@@ -112,6 +113,22 @@ export default function AsambleaPage() {
                         </div>
                     ) : (
                         <div className="animate-in fade-in zoom-in-95 duration-500 space-y-6">
+                            
+                            {/* Botón de respaldo directo para celulares si el navegador bloquea el iframe */}
+                            <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+                                <p className="text-xs text-blue-300 font-medium text-center sm:text-left">
+                                    💡 Si tu teléfono muestra pantallas de marcación o apps, abre la sala directamente aquí:
+                                </p>
+                                <a 
+                                    href={jitsiUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="shrink-0 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-md transition-all text-center"
+                                >
+                                    🔗 Abrir Sala en Pantalla Completa
+                                </a>
+                            </div>
+
                             <div className="w-full h-[650px] rounded-[2rem] overflow-hidden border border-white/10 bg-black relative shadow-2xl">
                                 <iframe
                                     src={jitsiUrl}
