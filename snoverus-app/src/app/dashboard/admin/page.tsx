@@ -28,6 +28,11 @@ export default function AdminPanel() {
   const [tituloAsamblea, setTituloAsamblea] = useState('');
   const [loadingAsamblea, setLoadingAsamblea] = useState(false);
 
+  // Estados para Historial y Asistencia de Asambleas
+  const [historialAsambleas, setHistorialAsambleas] = useState<any[]>([]);
+  const [asistenciaRegistros, setAsistenciaRegistros] = useState<any[]>([]);
+  const [tituloNuevaAsamblea, setTituloNuevaAsamblea] = useState('');
+
   const [usuarios, setUsuarios] = useState<any[]>([]);
   const [tickets, setTickets] = useState<any[]>([]);
   const [encuestasData, setEncuestasData] = useState<any[]>([]);
@@ -41,8 +46,6 @@ export default function AdminPanel() {
   const [procesandoTicket, setProcesandoTicket] = useState(false);
 
   const [procesandoPostulacion, setProcesandoPostulacion] = useState<number | null>(null);
-  const [procesandoTodas, setProcesandoTodas] = useState(false);
-
   const [usuarioEnEdicion, setUsuarioEnEdicion] = useState<any>(null);
   const [editNombre, setEditNombre] = useState('');
   const [editRut, setEditRut] = useState('');
@@ -129,6 +132,13 @@ export default function AdminPanel() {
 
           const { data: aportesData } = await supabase.from('fondo_aportes').select('monto').eq('estado', 'Aprobado');
           if (aportesData) setFondoRecaudado(aportesData.reduce((sum, a) => sum + Number(a.monto), 0));
+
+          // Cargar Historial y Asistencia de Asambleas
+          const { data: histData } = await supabase.from('historial_asambleas').select('*').eq('sindicato_id', profile.sindicato_id).order('created_at', { ascending: false });
+          if (Array.isArray(histData)) setHistorialAsambleas(histData);
+
+          const { data: asistData } = await supabase.from('asistencia_asambleas').select('*, profiles(full_name, rut)').eq('sindicato_id', profile.sindicato_id);
+          if (Array.isArray(asistData)) setAsistenciaRegistros(asistData);
         }
       }
     } catch (err) {
@@ -156,6 +166,24 @@ export default function AdminPanel() {
       alert('❌ Error al actualizar: ' + err.message);
     } finally {
       setGuardandoSindicato(false);
+    }
+  };
+
+  const handleCrearAsambleaHistorica = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tituloNuevaAsamblea.trim()) return;
+    try {
+      const supabase = createClient();
+      await supabase.from('historial_asambleas').insert([{
+        titulo: tituloNuevaAsamblea,
+        link_reunion: linkAsamblea,
+        sindicato_id: idSindicatoActual
+      }]);
+      setTituloNuevaAsamblea('');
+      fetchEnterpriseData();
+      alert('✅ Asamblea registrada en el historial correctamente.');
+    } catch (err: any) {
+      alert('Error: ' + err.message);
     }
   };
 
@@ -246,14 +274,6 @@ export default function AdminPanel() {
         alert('✅ Usuario eliminado.');
       } else alert('❌ Error al eliminar: ' + error.message);
     } catch (err: any) { console.error(err); }
-  };
-
-  const handleActualizarCita = async (id: number, nuevoEstado: string) => {
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from('agenda_legal').update({ estado: nuevoEstado }).eq('id', id);
-      if (!error) setCitas(citas.map(c => c.id === id ? { ...c, estado: nuevoEstado } : c));
-    } catch (err: any) {}
   };
 
   const procesarPostulanteSupabase = async (postulacion: any) => {
@@ -376,6 +396,9 @@ export default function AdminPanel() {
             <button onClick={() => setActiveTab('config')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === 'config' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
               <span className="text-lg">📹</span> Enlace de Asamblea
             </button>
+            <button onClick={() => setActiveTab('historial')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === 'historial' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+              <span className="text-lg">📜</span> Historial de Asambleas
+            </button>
             <button onClick={() => setActiveTab('padron')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === 'padron' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
               <span className="text-lg">👥</span> Padrón & Postulantes
             </button>
@@ -434,7 +457,7 @@ export default function AdminPanel() {
               </div>
             )}
 
-            {/* TAB NUEVA: CONFIGURAR ENLACE DE ASAMBLEA */}
+            {/* TAB: CONFIGURAR ENLACE DE ASAMBLEA */}
             {activeTab === 'config' && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl">
                 <header className="mb-8">
@@ -462,7 +485,78 @@ export default function AdminPanel() {
               </div>
             )}
 
-            {/* TAB 2: PADRÓN Y POSTULANTES */}
+            {/* TAB NUEVA: HISTORIAL DE ASAMBLEAS Y ASISTENCIA */}
+            {activeTab === 'historial' && (
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+                <header className="mb-6">
+                  <h2 className="text-3xl font-black text-slate-800 tracking-tight">Historial Pro de Asambleas</h2>
+                  <p className="text-slate-500 font-medium">Lleva el registro formal de las asambleas realizadas y los socios concurrentes.</p>
+                </header>
+
+                {/* Formulario para registrar asamblea */}
+                <form onSubmit={handleCrearAsambleaHistorica} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 space-y-4">
+                  <h3 className="text-lg font-black text-slate-800">Registrar Nueva Asamblea en el Historial</h3>
+                  <div className="flex flex-col sm:flex-row gap-4">
+                    <input 
+                      type="text" 
+                      required 
+                      value={tituloNuevaAsamblea} 
+                      onChange={e => setTituloNuevaAsamblea(e.target.value)} 
+                      placeholder="Ej: Asamblea Ordinaria de Negociación - Octubre 2026" 
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-800 outline-none focus:border-blue-500" 
+                    />
+                    <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white font-black px-8 py-4 rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-blue-600/30">
+                      Registrar
+                    </button>
+                  </div>
+                </form>
+
+                {/* Listado de Asambleas e Inasistencias/Asistencias */}
+                <div className="space-y-6">
+                  {historialAsambleas.length === 0 ? (
+                    <div className="bg-white p-12 rounded-[2.5rem] text-center border border-slate-100 shadow-xl">
+                      <span className="text-4xl block mb-2 opacity-40">📂</span>
+                      <p className="text-slate-400 font-bold text-sm">No hay asambleas registradas en el historial aún.</p>
+                    </div>
+                  ) : (
+                    historialAsambleas.map((asam) => {
+                      const asistentesEstaAsamblea = asistenciaRegistros.filter(a => a.asamblea_id === asam.id);
+                      return (
+                        <div key={asam.id} className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/50 space-y-6">
+                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
+                            <div>
+                              <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{new Date(asam.created_at).toLocaleDateString('es-CL')}</span>
+                              <h3 className="text-xl font-black text-slate-800 mt-1">{asam.titulo}</h3>
+                            </div>
+                            <span className="px-5 py-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-full text-xs font-black shadow-sm">
+                              {asistentesEstaAsamblea.length} Socio(s) Concurrente(s)
+                            </span>
+                          </div>
+
+                          <div>
+                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Socios que ingresaron:</h4>
+                            {asistentesEstaAsamblea.length === 0 ? (
+                              <p className="text-xs text-slate-400 italic">No hay registros de asistencia guardados para esta sesión.</p>
+                            ) : (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                                {asistentesEstaAsamblea.map((asist) => (
+                                  <div key={asist.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col">
+                                    <span className="text-xs font-black text-slate-800">{asist.profiles?.full_name || 'Socio'}</span>
+                                    <span className="text-[11px] text-slate-500 font-bold mt-0.5">{asist.profiles?.rut || 'Sin RUT'}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* TAB: PADRÓN Y POSTULANTES */}
             {activeTab === 'padron' && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
                 <header>
@@ -563,7 +657,7 @@ export default function AdminPanel() {
               </div>
             )}
 
-            {/* TAB 3: SOPORTE Y LEGAL */}
+            {/* TAB: SOPORTE Y LEGAL */}
             {activeTab === 'soporte' && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
                 <header>
@@ -614,7 +708,7 @@ export default function AdminPanel() {
               </div>
             )}
 
-            {/* TAB 4: COMUNICACIONES */}
+            {/* TAB: COMUNICACIONES */}
             {activeTab === 'comunicaciones' && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
                 <header>
@@ -660,22 +754,6 @@ export default function AdminPanel() {
       </div>
 
       {/* MODALES */}
-      {ticketSeleccionado && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setTicketSeleccionado(null)}>
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg border border-slate-200" onClick={e => e.stopPropagation()}>
-            <div className="p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-              <h3 className="text-xl font-black text-slate-800">Resolver Ticket</h3>
-              <button onClick={() => setTicketSeleccionado(null)} className="font-bold text-slate-500">✕</button>
-            </div>
-            <div className="p-8 space-y-4">
-              <p className="text-sm font-bold text-slate-700 bg-blue-50 p-4 rounded-xl">{ticketSeleccionado.asunto}</p>
-              <textarea rows={4} value={detalleResolucion} onChange={e => setDetalleResolucion(e.target.value)} placeholder="Escribe la resolución..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-4 text-sm outline-none resize-none"></textarea>
-              <button onClick={confirmarResolucionTicket} disabled={procesandoTicket} className="w-full bg-emerald-500 text-white font-black py-4 rounded-xl text-xs uppercase tracking-widest">{procesandoTicket ? 'Procesando...' : 'Marcar como Resuelto'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {usuarioEnEdicion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setUsuarioEnEdicion(null)}>
           <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md border border-slate-200" onClick={e => e.stopPropagation()}>
