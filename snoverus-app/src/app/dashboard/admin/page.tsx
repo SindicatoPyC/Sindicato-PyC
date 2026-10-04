@@ -64,6 +64,43 @@ export default function AdminPanel() {
     }
   }, [isMounted]);
 
+  // 🔥 NUEVO: SUSCRIPCIÓN EN TIEMPO REAL A LA ASISTENCIA
+  useEffect(() => {
+    if (!idSindicatoActual) return;
+
+    const supabase = createClient();
+    
+    // Escuchar INSERTS o UPDATES en la tabla asistencia_asambleas
+    const channel = supabase
+      .channel('realtime-admin-asistencia')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Escucha cualquier cambio (nuevos ingresos, retiros, etc.)
+          schema: 'public',
+          table: 'asistencia_asambleas',
+          filter: `sindicato_id=eq.${idSindicatoActual}`
+        },
+        async (payload) => {
+          console.log('¡Nuevo socio registrado en vivo!', payload);
+          // Refrescamos los registros de asistencia en background para traer también sus perfiles (nombres)
+          const { data: asistData } = await supabase
+            .from('asistencia_asambleas')
+            .select('*, profiles(full_name, rut)')
+            .eq('sindicato_id', idSindicatoActual);
+            
+          if (Array.isArray(asistData)) {
+            setAsistenciaRegistros(asistData);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel); // Limpiamos el canal al desmontar el componente
+    };
+  }, [idSindicatoActual]);
+
   const validarAccesoAdmin = async () => {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -134,7 +171,6 @@ export default function AdminPanel() {
           const { data: aportesData } = await supabase.from('fondo_aportes').select('monto').eq('estado', 'Aprobado');
           if (aportesData) setFondoRecaudado(aportesData.reduce((sum, a) => sum + Number(a.monto), 0));
 
-          // Cargar Historial y Asistencia de Asambleas en tiempo real para este sindicato
           const { data: histData } = await supabase.from('historial_asambleas').select('*').eq('sindicato_id', profile.sindicato_id).order('created_at', { ascending: false });
           if (Array.isArray(histData)) setHistorialAsambleas(histData);
 
@@ -184,7 +220,6 @@ export default function AdminPanel() {
         .eq('id', user.id)
         .single();
 
-      // 1. Guardar en el historial pro de asambleas
       await supabase.from('historial_asambleas').insert([{
         titulo: tituloNuevaAsamblea,
         link_reunion: linkAsamblea,
@@ -193,16 +228,9 @@ export default function AdminPanel() {
         creador_nombre: adminProfile?.full_name || 'Administrador'
       }]);
 
-      // 2. Opcional pero recomendado: Crear también en asambleas_votaciones para que active el QR si lo desean
-      await supabase.from('asambleas_votaciones').insert([{
-        titulo: tituloNuevaAsamblea,
-        estado: 'Abierta',
-        sindicato_id: idSindicatoActual
-      }]);
-
       setTituloNuevaAsamblea('');
       fetchEnterpriseData();
-      alert('✅ Asamblea registrada en el historial y habilitada para QR correctamente.');
+      alert('✅ Asamblea registrada con auditoría de creador correctamente.');
     } catch (err: any) {
       alert('Error: ' + err.message);
     }
@@ -547,7 +575,6 @@ export default function AdminPanel() {
                     </div>
                   ) : (
                     historialAsambleas.map((asam) => {
-                      // CRUCE CORRECTO POR TÍTULO EXACTO O LIGTH MATCH
                       const asistentesEstaAsamblea = asistenciaRegistros.filter(
                         (a) => a.asamblea_titulo?.trim().toLowerCase() === asam.titulo?.trim().toLowerCase()
                       );
