@@ -28,7 +28,7 @@ export default function AdminPanel() {
   const [tituloAsamblea, setTituloAsamblea] = useState('');
   const [loadingAsamblea, setLoadingAsamblea] = useState(false);
 
-  // Estados para Historial y Asistencia de Asambleas
+  // Estados para Historial y Asistencia de Asambleas con Auditoría
   const [historialAsambleas, setHistorialAsambleas] = useState<any[]>([]);
   const [asistenciaRegistros, setAsistenciaRegistros] = useState<any[]>([]);
   const [tituloNuevaAsamblea, setTituloNuevaAsamblea] = useState('');
@@ -174,14 +174,26 @@ export default function AdminPanel() {
     if (!tituloNuevaAsamblea.trim()) return;
     try {
       const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: adminProfile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single();
+
       await supabase.from('historial_asambleas').insert([{
         titulo: tituloNuevaAsamblea,
         link_reunion: linkAsamblea,
-        sindicato_id: idSindicatoActual
+        sindicato_id: idSindicatoActual,
+        created_by: user.id,
+        creador_nombre: adminProfile?.full_name || 'Administrador'
       }]);
+
       setTituloNuevaAsamblea('');
       fetchEnterpriseData();
-      alert('✅ Asamblea registrada en el historial correctamente.');
+      alert('✅ Asamblea registrada con auditoría de creador correctamente.');
     } catch (err: any) {
       alert('Error: ' + err.message);
     }
@@ -314,26 +326,6 @@ export default function AdminPanel() {
     } catch (err) {}
   };
 
-  const abrirModalResolucion = (ticket: any) => {
-    setTicketSeleccionado(ticket);
-    setDetalleResolucion('');
-  };
-
-  const confirmarResolucionTicket = async () => {
-    if (!detalleResolucion.trim()) return alert("Debes ingresar un detalle de resolución.");
-    setProcesandoTicket(true);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from('tickets_soporte').update({ estado: 'Resuelto' }).eq('id', ticketSeleccionado.id);
-
-      if (!error) {
-        setTickets(tickets.map(t => t.id === ticketSeleccionado.id ? { ...t, estado: 'Resuelto' } : t));
-        alert(`✅ Ticket marcado como resuelto.`);
-        setTicketSeleccionado(null);
-      }
-    } catch (err: any) {} finally { setProcesandoTicket(false); }
-  };
-
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -370,87 +362,87 @@ export default function AdminPanel() {
   const ticketsRevision = safeTickets.filter(t => t?.estado === 'En Revisión').length;
 
   return (
-    <div className="min-h-screen bg-[#f4f7fb] font-sans pb-24 text-slate-900 relative overflow-hidden" 
+    <div className="min-h-screen bg-[#f8fafc] font-sans pb-24 text-slate-900 relative overflow-hidden selection:bg-blue-500 selection:text-white" 
          onClick={() => { if (menuAbiertoId) setMenuAbiertoId(null); if (ticketMenuAbiertoId) setTicketMenuAbiertoId(null); }}>
 
       <div className="flex flex-col md:flex-row h-screen">
 
         {/* SIDEBAR ADMINISTRADOR LOCAL */}
-        <aside className="w-full md:w-72 bg-gradient-to-b from-[#0f172a] to-[#1e293b] text-white flex flex-col shadow-2xl relative z-20 shrink-0">
+        <aside className="w-full md:w-72 bg-gradient-to-b from-[#0B132B] via-[#1C2541] to-[#3A506B] text-white flex flex-col shadow-2xl relative z-20 shrink-0">
           <div className="p-8 border-b border-white/10">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-500 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+              <div className="w-11 h-11 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/40">
                 <span className="text-xl font-black">⚙️</span>
               </div>
-              <div>
-                <h1 className="font-black text-xl tracking-tight leading-none truncate w-40">{editNombreSindicato || 'Sindicato'}</h1>
-                <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mt-1">Panel de Control</p>
+              <div className="overflow-hidden">
+                <h1 className="font-black text-lg tracking-tight leading-tight truncate text-white">{editNombreSindicato || 'Sindicato'}</h1>
+                <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mt-0.5">Panel de Control Pro</p>
               </div>
             </div>
           </div>
 
-          <nav className="flex-1 p-6 space-y-2 overflow-y-auto custom-scrollbar">
-            <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === 'dashboard' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
-              <span className="text-lg">📊</span> Resumen Operativo
+          <nav className="flex-1 p-6 space-y-2.5 overflow-y-auto custom-scrollbar">
+            <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+              <span className="text-base">📊</span> Resumen Operativo
             </button>
-            <button onClick={() => setActiveTab('config')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === 'config' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
-              <span className="text-lg">📹</span> Enlace de Asamblea
+            <button onClick={() => setActiveTab('config')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'config' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+              <span className="text-base">📹</span> Enlace de Asamblea
             </button>
-            <button onClick={() => setActiveTab('historial')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === 'historial' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
-              <span className="text-lg">📜</span> Historial de Asambleas
+            <button onClick={() => setActiveTab('historial')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'historial' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+              <span className="text-base">📜</span> Historial Pro
             </button>
-            <button onClick={() => setActiveTab('padron')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === 'padron' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
-              <span className="text-lg">👥</span> Padrón & Postulantes
+            <button onClick={() => setActiveTab('padron')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'padron' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+              <span className="text-base">👥</span> Padrón & Postulantes
             </button>
-            <button onClick={() => setActiveTab('soporte')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === 'soporte' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
-              <span className="text-lg">🎧</span> Soporte y Citas Legales
+            <button onClick={() => setActiveTab('soporte')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'soporte' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+              <span className="text-base">🎧</span> Soporte y Citas
             </button>
-            <button onClick={() => setActiveTab('comunicaciones')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-sm font-bold transition-all ${activeTab === 'comunicaciones' ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
-              <span className="text-lg">📢</span> Avisos y Votos
+            <button onClick={() => setActiveTab('comunicaciones')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'comunicaciones' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+              <span className="text-base">📢</span> Avisos y Votos
             </button>
           </nav>
 
-          <div className="p-6 border-t border-white/10 space-y-3">
-            <Link href="/dashboard" className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all">
+          <div className="p-6 border-t border-white/10 space-y-3 bg-black/10">
+            <Link href="/dashboard" className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
               ⇦ Portal Socios
             </Link>
-            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all shadow-lg shadow-red-500/20">
+            <button onClick={handleLogout} className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
               Cerrar Sesión
             </button>
           </div>
         </aside>
 
         {/* CONTENIDO PRINCIPAL */}
-        <main className="flex-1 overflow-y-auto relative p-6 md:p-10">
+        <main className="flex-1 overflow-y-auto relative p-6 md:p-12">
           <div className="max-w-7xl mx-auto space-y-8 relative z-10">
 
             {/* TAB 1: DASHBOARD Y MÉTRICAS */}
             {activeTab === 'dashboard' && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <header className="mb-8">
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+                <header>
                   <h2 className="text-3xl font-black text-slate-800 tracking-tight">Centro de Mando Operativo</h2>
-                  <p className="text-slate-500 font-medium">Estadísticas en tiempo real de tu organización.</p>
+                  <p className="text-slate-500 font-medium text-sm mt-1">Estadísticas en tiempo real de tu organización sindical.</p>
                 </header>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
-                  <div className="bg-white border border-slate-100 p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
-                    <span className="text-blue-500 text-[11px] font-black uppercase tracking-[0.2em] mb-2">Total Socios</span>
-                    <span className="text-5xl font-black">{loadingDatos ? '...' : usuarios.length}</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
+                  <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
+                    <span className="text-blue-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Total Socios</span>
+                    <span className="text-4xl font-black">{loadingDatos ? '...' : usuarios.length}</span>
                   </div>
-                  <div className="bg-white border border-slate-100 p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
-                    <span className="text-emerald-500 text-[11px] font-black uppercase tracking-[0.2em] mb-2">Votos Emitidos</span>
-                    <span className="text-5xl font-black">{loadingDatos ? '...' : totalVotosEmitidos}</span>
+                  <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
+                    <span className="text-emerald-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Votos Emitidos</span>
+                    <span className="text-4xl font-black">{loadingDatos ? '...' : totalVotosEmitidos}</span>
                   </div>
-                  <div className="bg-white border border-slate-100 p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
-                    <span className="text-amber-500 text-[11px] font-black uppercase tracking-[0.2em] mb-2">Tickets Activos</span>
-                    <span className="text-5xl font-black">{loadingDatos ? '...' : (ticketsPendientes + ticketsRevision)}</span>
+                  <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
+                    <span className="text-amber-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Tickets Activos</span>
+                    <span className="text-4xl font-black">{loadingDatos ? '...' : (ticketsPendientes + ticketsRevision)}</span>
                   </div>
-                  <div className="bg-white border border-slate-100 p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
-                    <span className="text-indigo-500 text-[11px] font-black uppercase tracking-[0.2em] mb-2">Citas Legales</span>
-                    <span className="text-5xl font-black">{loadingDatos ? '...' : citas.length}</span>
+                  <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
+                    <span className="text-indigo-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Citas Legales</span>
+                    <span className="text-4xl font-black">{loadingDatos ? '...' : citas.length}</span>
                   </div>
-                  <div className="bg-white border border-slate-100 p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
-                    <span className="text-rose-500 text-[11px] font-black uppercase tracking-[0.2em] mb-2">Fondo Solidario</span>
+                  <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
+                    <span className="text-rose-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Fondo Solidario</span>
                     <span className="text-3xl font-black">${loadingDatos ? '...' : fondoRecaudado.toLocaleString('es-CL')}</span>
                   </div>
                 </div>
@@ -459,23 +451,23 @@ export default function AdminPanel() {
 
             {/* TAB: CONFIGURAR ENLACE DE ASAMBLEA */}
             {activeTab === 'config' && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl">
-                <header className="mb-8">
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl space-y-6">
+                <header>
                   <h2 className="text-3xl font-black text-slate-800 tracking-tight">Gestión de Asamblea Virtual</h2>
-                  <p className="text-slate-500 font-medium">Configura el enlace oficial de Google Meet, Zoom o Teams para los socios.</p>
+                  <p className="text-slate-500 font-medium text-sm mt-1">Configura el enlace oficial de Google Meet, Zoom o Teams para los socios.</p>
                 </header>
 
                 <form onSubmit={guardarCambiosSindicato} className="bg-white p-8 sm:p-10 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 space-y-6">
                   <div>
-                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Enlace de Videollamada (Meet / Zoom / Teams)</label>
+                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Enlace de Videollamada (Meet / Zoom / Teams)</label>
                     <input 
                       type="url" 
                       value={linkAsamblea} 
                       onChange={e => setLinkAsamblea(e.target.value)} 
                       placeholder="https://meet.google.com/abc-defg-hij" 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-800 outline-none focus:border-blue-500" 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 transition-all" 
                     />
-                    <p className="text-xs text-slate-400 mt-2">Los socios que escaneen el código QR o entren a la sala de asamblea serán redirigidos automáticamente a este enlace.</p>
+                    <p className="text-xs text-slate-400 mt-2.5 leading-relaxed">Los socios que escaneen el código QR o entren a la sala de asamblea serán redirigidos automáticamente a este enlace.</p>
                   </div>
 
                   <button type="submit" disabled={guardandoSindicato} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-blue-600/30 transition-all">
@@ -485,12 +477,14 @@ export default function AdminPanel() {
               </div>
             )}
 
-            {/* TAB NUEVA: HISTORIAL DE ASAMBLEAS Y ASISTENCIA */}
+            {/* TAB: HISTORIAL PRO DE ASAMBLEAS Y AUDITORÍA */}
             {activeTab === 'historial' && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
-                <header className="mb-6">
-                  <h2 className="text-3xl font-black text-slate-800 tracking-tight">Historial Pro de Asambleas</h2>
-                  <p className="text-slate-500 font-medium">Lleva el registro formal de las asambleas realizadas y los socios concurrentes.</p>
+                <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h2 className="text-3xl font-black text-slate-800 tracking-tight">Historial Pro de Asambleas</h2>
+                    <p className="text-slate-500 font-medium text-sm mt-1">Auditoría formal de sesiones, creadores y concurrencia de socios en tiempo real.</p>
+                  </div>
                 </header>
 
                 {/* Formulario para registrar asamblea */}
@@ -503,15 +497,15 @@ export default function AdminPanel() {
                       value={tituloNuevaAsamblea} 
                       onChange={e => setTituloNuevaAsamblea(e.target.value)} 
                       placeholder="Ej: Asamblea Ordinaria de Negociación - Octubre 2026" 
-                      className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-800 outline-none focus:border-blue-500" 
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 transition-all" 
                     />
-                    <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white font-black px-8 py-4 rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-blue-600/30">
-                      Registrar
+                    <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white font-black px-8 py-4 rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-blue-600/30 transition-all shrink-0">
+                      Registrar Sesión
                     </button>
                   </div>
                 </form>
 
-                {/* Listado de Asambleas e Inasistencias/Asistencias */}
+                {/* Listado de Asambleas con Auditoría Completa */}
                 <div className="space-y-6">
                   {historialAsambleas.length === 0 ? (
                     <div className="bg-white p-12 rounded-[2.5rem] text-center border border-slate-100 shadow-xl">
@@ -521,33 +515,72 @@ export default function AdminPanel() {
                   ) : (
                     historialAsambleas.map((asam) => {
                       const asistentesEstaAsamblea = asistenciaRegistros.filter(a => a.asamblea_id === asam.id);
+                      const fechaCreacion = new Date(asam.created_at).toLocaleDateString('es-CL', {
+                        day: '2-digit', month: '2-digit', year: 'numeric'
+                      });
+                      const horaCreacion = new Date(asam.created_at).toLocaleTimeString('es-CL', {
+                        hour: '2-digit', minute: '2-digit'
+                      });
+
                       return (
                         <div key={asam.id} className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/50 space-y-6">
-                          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-4">
+                          
+                          {/* Cabecera de la tarjeta */}
+                          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-5">
                             <div>
-                              <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{new Date(asam.created_at).toLocaleDateString('es-CL')}</span>
-                              <h3 className="text-xl font-black text-slate-800 mt-1">{asam.titulo}</h3>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className="px-3.5 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-wider border border-blue-100">
+                                  📅 {fechaCreacion} a las {horaCreacion} hrs
+                                </span>
+                              </div>
+                              <h3 className="text-2xl font-black text-slate-800 mt-1">{asam.titulo}</h3>
                             </div>
-                            <span className="px-5 py-2 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-full text-xs font-black shadow-sm">
-                              {asistentesEstaAsamblea.length} Socio(s) Concurrente(s)
+                            <span className="px-5 py-2.5 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-2xl text-xs font-black shadow-sm flex items-center gap-2">
+                              👥 {asistentesEstaAsamblea.length} Socio(s) Concurrente(s)
                             </span>
                           </div>
 
+                          {/* Detalle del Creador (Auditoría) */}
+                          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-4">
+                            <div className="w-11 h-11 bg-gradient-to-tr from-indigo-600 to-violet-500 text-white rounded-2xl flex items-center justify-center font-black text-sm shadow-md shrink-0">
+                              🛡️
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Creado y autorizado por</p>
+                              <p className="text-sm font-black text-slate-800">{asam.creador_nombre || 'Administrador del Sindicato'}</p>
+                            </div>
+                          </div>
+
+                          {/* Listado de Socios que interactuaron */}
                           <div>
-                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Socios que ingresaron:</h4>
+                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Socios que ingresaron / interactuaron:</h4>
                             {asistentesEstaAsamblea.length === 0 ? (
-                              <p className="text-xs text-slate-400 italic">No hay registros de asistencia guardados para esta sesión.</p>
+                              <p className="text-xs text-slate-400 italic bg-amber-50/50 p-4 rounded-2xl border border-amber-100 text-amber-700">
+                                ⚠️ Ningún socio ha registrado asistencia todavía para esta sesión específica.
+                              </p>
                             ) : (
                               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                                {asistentesEstaAsamblea.map((asist) => (
-                                  <div key={asist.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex flex-col">
-                                    <span className="text-xs font-black text-slate-800">{asist.profiles?.full_name || 'Socio'}</span>
-                                    <span className="text-[11px] text-slate-500 font-bold mt-0.5">{asist.profiles?.rut || 'Sin RUT'}</span>
-                                  </div>
-                                ))}
+                                {asistentesEstaAsamblea.map((asist) => {
+                                  const horaIngreso = new Date(asist.created_at).toLocaleTimeString('es-CL', {
+                                    hour: '2-digit', minute: '2-digit'
+                                  });
+                                  return (
+                                    <div key={asist.id} className="p-4 bg-slate-50/80 rounded-2xl border border-slate-100 flex flex-col justify-between space-y-2">
+                                      <div>
+                                        <span className="text-xs font-black text-slate-800 block truncate">{asist.profiles?.full_name || 'Socio'}</span>
+                                        <span className="text-[11px] text-slate-500 font-bold mt-0.5">{asist.profiles?.rut || 'Sin RUT'}</span>
+                                      </div>
+                                      <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[10px]">
+                                        <span className="text-slate-400 font-bold uppercase">Ingreso:</span>
+                                        <span className="font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">{horaIngreso} hrs</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                               </div>
                             )}
                           </div>
+
                         </div>
                       );
                     })
@@ -561,11 +594,11 @@ export default function AdminPanel() {
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
                 <header>
                   <h2 className="text-3xl font-black text-slate-800 tracking-tight">Gestión del Padrón</h2>
-                  <p className="text-slate-500 font-medium">Aprueba nuevos ingresos y administra las cuentas exclusivas de tu organización.</p>
+                  <p className="text-slate-500 font-medium text-sm mt-1">Aprueba nuevos ingresos y administra las cuentas exclusivas de tu organización.</p>
                 </header>
 
-                <section className="bg-white border border-slate-100 rounded-[2rem] shadow-xl shadow-slate-200/50 overflow-hidden">
-                  <div className="p-8 border-b border-slate-100 bg-rose-50/50 flex justify-between items-center">
+                <section className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden">
+                  <div className="p-8 border-b border-slate-100 bg-rose-50/40 flex justify-between items-center">
                     <div>
                       <h3 className="text-xl font-black text-slate-800">📥 Bandeja de Postulaciones</h3>
                       <p className="text-sm text-slate-500 mt-1">{postulaciones.length} solicitudes pendientes.</p>
@@ -586,13 +619,13 @@ export default function AdminPanel() {
                           <tr><td colSpan={4} className="p-10 text-center text-slate-400 text-sm font-medium">Bandeja vacía.</td></tr>
                         ) : (
                           postulaciones.map((post) => (
-                            <tr key={post.id} className="hover:bg-rose-50/30 transition-colors">
+                            <tr key={post.id} className="hover:bg-rose-50/20 transition-colors">
                               <td className="p-5 pl-8 font-extrabold text-slate-800 text-sm">{post.full_name}</td>
                               <td className="p-5 text-sm font-bold text-slate-500">{post.rut}</td>
                               <td className="p-5 text-sm font-medium text-slate-600">{post.email}</td>
                               <td className="p-5 pr-8 text-right flex justify-end gap-2">
-                                <button onClick={() => handleRechazarPostulacion(post.id)} className="text-xs font-bold text-slate-400 hover:text-red-600 px-3 py-2 rounded-lg">Rechazar</button>
-                                <button onClick={() => handleAprobarPostulacion(post)} disabled={procesandoPostulacion === post.id} className="bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider px-4 py-2 rounded-xl shadow-md">
+                                <button onClick={() => handleRechazarPostulacion(post.id)} className="text-xs font-bold text-slate-400 hover:text-red-600 px-3 py-2 rounded-lg transition-colors">Rechazar</button>
+                                <button onClick={() => handleAprobarPostulacion(post)} disabled={procesandoPostulacion === post.id} className="bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider px-4 py-2.5 rounded-xl shadow-md transition-all">
                                   {procesandoPostulacion === post.id ? 'Aprobando...' : 'Aprobar'}
                                 </button>
                               </td>
@@ -604,8 +637,8 @@ export default function AdminPanel() {
                   </div>
                 </section>
 
-                <section className="bg-white border border-slate-100 rounded-[2rem] shadow-xl shadow-slate-200/50 overflow-hidden">
-                  <div className="p-8 border-b border-slate-100 bg-slate-50">
+                <section className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden">
+                  <div className="p-8 border-b border-slate-100 bg-slate-50/50">
                     <h3 className="text-xl font-black text-slate-800">🛡️ Cuentas Activas de la Organización</h3>
                   </div>
                   <div className="p-2 overflow-x-auto">
@@ -629,16 +662,16 @@ export default function AdminPanel() {
                                 {user.email}
                               </td>
                               <td className="p-5">
-                                <span className={`px-3 py-1.5 text-[9px] font-black uppercase rounded-full border ${isAdminLocal ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                                <span className={`px-3.5 py-1.5 text-[9px] font-black uppercase rounded-full border ${isAdminLocal ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
                                   {isAdminLocal ? 'Admin' : 'Socio'}
                                 </span>
                               </td>
                               <td className="p-5 pr-8 text-right relative">
-                                <button onClick={(e) => { e.stopPropagation(); setMenuAbiertoId(menuAbiertoId === user.id ? null : user.id); }} className="w-10 h-10 inline-flex items-center justify-center rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50">
+                                <button onClick={(e) => { e.stopPropagation(); setMenuAbiertoId(menuAbiertoId === user.id ? null : user.id); }} className="w-10 h-10 inline-flex items-center justify-center rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
                                   ⋮
                                 </button>
                                 {menuAbiertoId === user.id && (
-                                  <div className="absolute right-12 top-10 w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden z-50 text-left" onClick={e => e.stopPropagation()}>
+                                  <div className="absolute right-12 top-10 w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden z-50 text-left animate-in fade-in zoom-in-95" onClick={e => e.stopPropagation()}>
                                     <div className="p-2 space-y-1">
                                       <button onClick={() => { handleEditarUsuario(user); setMenuAbiertoId(null); }} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl">✏️ Editar Perfil</button>
                                       <button onClick={() => { handleCambiarRol(user); setMenuAbiertoId(null); }} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl">🔄 Cambiar Rol</button>
@@ -664,8 +697,8 @@ export default function AdminPanel() {
                   <h2 className="text-3xl font-black text-slate-800 tracking-tight">Soporte y Atención</h2>
                 </header>
 
-                <section className="bg-white border border-slate-100 rounded-[2rem] shadow-xl shadow-slate-200/50 overflow-hidden">
-                  <div className="p-8 border-b border-slate-100 bg-amber-50/50">
+                <section className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden">
+                  <div className="p-8 border-b border-slate-100 bg-amber-50/40">
                     <h3 className="text-xl font-black text-slate-800">🎧 Tickets de Soporte</h3>
                   </div>
                   <div className="p-2 overflow-x-auto">
@@ -690,13 +723,13 @@ export default function AdminPanel() {
                               {ticket.rut}
                             </td>
                             <td className="p-5">
-                              <span className={`px-3 py-1.5 text-[9px] font-black uppercase rounded-full border ${ticket.estado === 'Resuelto' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                              <span className={`px-3.5 py-1.5 text-[9px] font-black uppercase rounded-full border ${ticket.estado === 'Resuelto' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
                                 {ticket.estado}
                               </span>
                             </td>
                             <td className="p-5 pr-8 text-right">
                               {ticket.estado !== 'Resuelto' && (
-                                <button onClick={() => abrirModalResolucion(ticket)} className="text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-xl">Resolver ✓</button>
+                                <button onClick={() => abrirModalResolucion(ticket)} className="text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-xl transition-all">Resolver ✓</button>
                               )}
                             </td>
                           </tr>
@@ -716,15 +749,15 @@ export default function AdminPanel() {
                 </header>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <section className="bg-white border border-slate-100 rounded-[2rem] p-8 shadow-xl shadow-slate-200/50">
+                  <section className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/50">
                     <h3 className="text-xl font-black text-slate-800 mb-6">📢 Avisos y Comunicados</h3>
                     <form onSubmit={handlePublicarNoticia} className="space-y-5">
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Título</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Título</label>
                         <input type="text" required value={tituloNoticia} onChange={e => setTituloNoticia(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Mensaje</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Mensaje</label>
                         <textarea required rows={4} value={contenidoNoticia} onChange={e => setContenidoNoticia(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm outline-none resize-none focus:ring-2 focus:ring-blue-500" />
                       </div>
                       <button type="submit" disabled={loadingNoticia} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl transition-all text-xs uppercase tracking-widest shadow-lg">
@@ -733,11 +766,11 @@ export default function AdminPanel() {
                     </form>
                   </section>
 
-                  <section className="bg-white border border-slate-100 rounded-[2rem] p-8 shadow-xl shadow-slate-200/50">
+                  <section className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/50">
                     <h3 className="text-xl font-black text-slate-800 mb-6">🗳️ Apertura de Votaciones</h3>
                     <form onSubmit={handleAbrirAsamblea} className="space-y-5">
                       <div>
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Materia a Votar</label>
+                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Materia a Votar</label>
                         <input type="text" required value={tituloAsamblea} onChange={e => setTituloAsamblea(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm outline-none focus:ring-2 focus:ring-amber-500" />
                       </div>
                       <button type="submit" disabled={loadingAsamblea} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl transition-all text-xs uppercase tracking-widest shadow-lg">
@@ -756,16 +789,16 @@ export default function AdminPanel() {
       {/* MODALES */}
       {usuarioEnEdicion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setUsuarioEnEdicion(null)}>
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md border border-slate-200" onClick={e => e.stopPropagation()}>
-            <div className="p-8 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-200 p-8 space-y-6" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
               <h3 className="text-xl font-black text-slate-800">Editar Perfil</h3>
-              <button onClick={() => setUsuarioEnEdicion(null)} className="font-bold text-slate-500">✕</button>
+              <button onClick={() => setUsuarioEnEdicion(null)} className="font-bold text-slate-400 hover:text-slate-600">✕</button>
             </div>
-            <form onSubmit={guardarEdicionUsuario} className="p-8 space-y-5">
+            <form onSubmit={guardarEdicionUsuario} className="space-y-4">
               <input type="text" value={editNombre} onChange={e => setEditNombre(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 text-sm font-bold" placeholder="Nombre" />
               <input type="text" value={editRut} onChange={e => setEditRut(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 text-sm font-bold" placeholder="RUT" />
               <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 text-sm font-bold" placeholder="Email" />
-              <button type="submit" disabled={guardandoUsuario} className="w-full bg-blue-600 text-white font-black py-3 rounded-xl">{guardandoUsuario ? 'Guardando...' : 'Guardar Perfil'}</button>
+              <button type="submit" disabled={guardandoUsuario} className="w-full bg-blue-600 text-white font-black py-3.5 rounded-xl text-xs uppercase tracking-widest shadow-lg">{guardandoUsuario ? 'Guardando...' : 'Guardar Perfil'}</button>
             </form>
           </div>
         </div>
