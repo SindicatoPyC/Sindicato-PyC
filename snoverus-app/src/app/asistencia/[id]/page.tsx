@@ -9,17 +9,21 @@ export default function RegistrarAsistenciaPage({ params }: { params: { id: stri
   const router = useRouter();
   const [estado, setEstado] = useState<'cargando' | 'exito' | 'error'>('cargando');
   const [mensaje, setMensaje] = useState('Validando tu asistencia en el quórum en vivo...');
+  const [timestamp, setTimestamp] = useState<string>('');
 
   useEffect(() => {
     async function registrar() {
       const supabase = createClient();
       
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user }, error: sessionError } = await supabase.auth.getUser();
 
-      if (!user) {
+      if (sessionError || !user) {
         setEstado('error');
         setMensaje('Debes iniciar sesión en la plataforma primero para registrar tu asistencia.');
-        setTimeout(() => router.push('/'), 4000);
+        // Espera 3 segundos para que el usuario lea el mensaje y luego lo manda al login guardando la ruta
+        setTimeout(() => {
+          router.push(`/?redirect=/asistencia/${params.id}`);
+        }, 3000);
         return;
       }
 
@@ -38,16 +42,21 @@ export default function RegistrarAsistenciaPage({ params }: { params: { id: stri
         return;
       }
 
-      // Registro oficial en Supabase para el Quórum en Vivo
-      const { error } = await supabase.from('asistencia_asambleas').insert([{
+      const horaActual = new Date().toISOString();
+
+      // Registro oficial en Supabase para el Quórum en Vivo guardando la hora exacta
+      const { error: insertError } = await supabase.from('asistencia_asambleas').insert([{
         asamblea_titulo: asamblea.titulo,
         usuario_rut: profile.rut,
         user_id: user.id,
-        estado: 'Presente'
+        estado: 'Presente',
+        fecha_asistencia: horaActual
       }]);
 
-      if (error) {
-        if (error.code === '23505' || error.message.includes('duplicate')) {
+      setTimestamp(new Date(horaActual).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+
+      if (insertError) {
+        if (insertError.code === '23505' || insertError.message.includes('duplicate')) {
           setEstado('exito');
           setMensaje('Tu asistencia ya se encontraba registrada en el quórum de esta sesión.');
         } else {
@@ -70,7 +79,7 @@ export default function RegistrarAsistenciaPage({ params }: { params: { id: stri
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="max-w-md w-full bg-white/10 backdrop-blur-2xl rounded-[2.5p_x] shadow-[0_20px_50px_rgba(0,0,0,0.3)] p-8 sm:p-10 text-center border border-white/15 relative z-10"
+        className="max-w-md w-full bg-white/10 backdrop-blur-2xl rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.3)] p-8 sm:p-10 text-center border border-white/15 relative z-10"
       >
         {estado === 'cargando' && (
           <div className="py-8 space-y-6">
@@ -81,14 +90,21 @@ export default function RegistrarAsistenciaPage({ params }: { params: { id: stri
         )}
         
         {estado === 'exito' && (
-          <div className="space-y-6 py-4">
+          <div className="space-y-6 py-4 flex flex-col items-center">
             <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-6xl mb-2 drop-shadow-[0_10px_15px_rgba(16,185,129,0.4)]">
               ✅
             </motion.div>
             <h2 className="text-3xl font-black text-white tracking-tight">¡Estás Presente!</h2>
             <p className="text-slate-300 text-sm font-medium leading-relaxed">{mensaje}</p>
             
-            <div className="pt-4">
+            {/* Visualización del Timestamp de Registro */}
+            {timestamp && (
+              <div className="bg-white/5 rounded-xl px-5 py-2.5 border border-white/10 text-xs font-mono font-bold text-emerald-400 shadow-inner w-fit">
+                Hora de registro: {timestamp}
+              </div>
+            )}
+            
+            <div className="pt-4 w-full">
               <button 
                 onClick={() => router.push('/asamblea')} 
                 className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-4 rounded-2xl shadow-[0_10px_25px_rgba(37,99,235,0.4)] transition-all transform hover:-translate-y-0.5 uppercase tracking-widest text-xs flex items-center justify-center gap-2"
@@ -106,10 +122,10 @@ export default function RegistrarAsistenciaPage({ params }: { params: { id: stri
             <p className="text-rose-300 font-semibold text-sm leading-relaxed">{mensaje}</p>
             
             <button 
-              onClick={() => router.push('/dashboard')} 
+              onClick={() => router.push(`/?redirect=/asistencia/${params.id}`)} 
               className="w-full bg-white/10 hover:bg-white/20 text-white font-black py-4 rounded-2xl transition-all uppercase tracking-widest text-xs border border-white/10"
             >
-              Volver al Panel Principal
+              Ir al Panel de Ingreso Seguro
             </button>
           </div>
         )}
