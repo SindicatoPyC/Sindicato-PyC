@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '../../../../lib/supabase'; // Asegúrate de que esta ruta apunte a tu lib de supabase
+import { createClient } from '../../../../lib/supabase'; 
 
 export default function RegistrarAsistenciaPage({ params }: { params: { id: string } }) {
   const router = useRouter();
@@ -77,7 +77,7 @@ export default function RegistrarAsistenciaPage({ params }: { params: { id: stri
             <div className="text-7xl mb-6 drop-shadow-sm">✅</div>
             <h2 className="text-3xl font-black text-slate-800 tracking-tight">¡Presente!</h2>
             <p className="text-slate-500 font-medium">{mensaje}</p>
-            {/* 2. Este botón envía al socio directamente a la sala de Jitsi */}
+            {/* 2. Redirección directa a Jitsi */}
             <button onClick={() => router.push('/asamblea')} className="mt-8 w-full bg-blue-600 text-white font-black py-4 rounded-xl hover:bg-blue-700 transition-colors uppercase tracking-widest text-xs">
               Entrar a la Asamblea Virtual
             </button>

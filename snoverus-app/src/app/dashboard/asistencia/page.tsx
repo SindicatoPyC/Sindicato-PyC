@@ -220,8 +220,8 @@ export default function AsistenciaPage() {
     }
   };
 
-  // INYECCIÓN DE LA URL OFICIAL PARA EL QR
-  const DOMINIO_OFICIAL = 'https://sindicato-py-jmiuwzu72-sindicato-py-c.vercel.app';
+  // INYECCIÓN DE LA URL OFICIAL PARA EL QR USANDO EL DOMINIO DE VERCEL
+  const DOMINIO_OFICIAL = 'https://sindicato-py-igx5350xv-sindicato-py-c.vercel.app';
   
   const qrCheckInUrl = asambleaActiva 
     ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`${DOMINIO_OFICIAL}/asistencia/registrar/${asambleaActiva.id}`)}&color=0f172a&bgcolor=ffffff&margin=1`
