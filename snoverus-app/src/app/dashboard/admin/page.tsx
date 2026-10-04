@@ -356,21 +356,44 @@ export default function AdminPanel() {
     }
   };
 
+  // --- NUEVA LÓGICA DE APROBACIÓN DE POSTULANTES CON MANEJO DE ERRORES Y EMAIL ---
   const procesarPostulanteSupabase = async (postulacion: any) => {
     const supabase = createClient();
     const cleanRut = postulacion.rut.replace(/[^0-9kK]/g, '');
     const ultimosDigitos = cleanRut.length > 4 ? cleanRut.slice(-4) : '1234';
     const passwordTemporal = `Pyc${ultimosDigitos}.2026`;
 
-    const { data: authData, error: authError } = await supabase.auth.signUp({ email: postulacion.email, password: passwordTemporal });
-    if (authError) console.warn("Aviso Auth:", authError.message);
-
-    if (authData?.user) {
-       await supabase.from('profiles').upsert({ id: authData.user.id, rut: postulacion.rut, full_name: postulacion.full_name, email: postulacion.email, role: 'socio', sindicato_id: idSindicatoActual });
-    } else {
-       await supabase.from('profiles').upsert({ rut: postulacion.rut, full_name: postulacion.full_name, email: postulacion.email, role: 'socio', sindicato_id: idSindicatoActual }, { onConflict: 'rut' });
+    // 1. Intentar crear el usuario en Auth
+    const { data: authData, error: authError } = await supabase.auth.signUp({ 
+      email: postulacion.email, 
+      password: passwordTemporal 
+    });
+    
+    // Validar el error 422 (Correo duplicado)
+    if (authError) {
+      throw new Error(`El correo ${postulacion.email} ya está registrado en el sistema o es inválido.`);
     }
 
+    // Validar el error 400 (No devolvió ID)
+    if (!authData?.user) {
+      throw new Error('El sistema no pudo generar el identificador del usuario.');
+    }
+
+    // 2. Insertar el perfil de forma segura
+    const { error: profileError } = await supabase.from('profiles').upsert({ 
+      id: authData.user.id, 
+      rut: postulacion.rut, 
+      full_name: postulacion.full_name, 
+      email: postulacion.email, 
+      role: 'socio', 
+      sindicato_id: idSindicatoActual 
+    });
+
+    if (profileError) {
+      throw new Error(`Error al vincular el perfil: ${profileError.message}`);
+    }
+
+    // 3. Marcar postulación como aprobada
     await supabase.from('postulaciones').update({ estado: 'Aprobada' }).eq('id', postulacion.id);
     return passwordTemporal; 
   };
@@ -378,12 +401,39 @@ export default function AdminPanel() {
   const handleAprobarPostulacion = async (postulacion: any) => {
     if (!window.confirm(`¿Aprobar al socio ${postulacion.full_name}?`)) return;
     setProcesandoPostulacion(postulacion.id);
+    
     try {
-      await procesarPostulanteSupabase(postulacion);
+      const passwordGenerada = await procesarPostulanteSupabase(postulacion);
+
+      // 4. Enviar credenciales (Usando tu ruta local api/send-email)
+      try {
+        await fetch('/api/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: postulacion.email,
+            nombre: postulacion.full_name,
+            rut: postulacion.rut,
+            password: passwordGenerada,
+            sindicato: editNombreSindicato || 'Tu Sindicato'
+          })
+        });
+      } catch (emailErr) {
+        console.warn("Aviso: No se pudo conectar con el servicio de correos.", emailErr);
+      }
+
       setPostulaciones(postulaciones.filter(p => p.id !== postulacion.id));
       fetchEnterpriseData(); 
-    } catch (err: any) { alert(`❌ Error: ${err.message}`); } finally { setProcesandoPostulacion(null); }
+      alert(`✅ ¡Socio aprobado exitosamente! Las credenciales fueron enviadas a ${postulacion.email}.`);
+      
+    } catch (err: any) { 
+      // Si el correo ya existía (422), atrapará el error aquí y no romperá nada
+      alert(`❌ Operación detenida: ${err.message}`); 
+    } finally { 
+      setProcesandoPostulacion(null); 
+    }
   };
+  // --------------------------------------------------------------------------------
 
   const handleRechazarPostulacion = async (id: number) => {
     if (!window.confirm("¿Seguro que deseas rechazar y eliminar esta postulación?")) return;
