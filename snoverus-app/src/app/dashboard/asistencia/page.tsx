@@ -120,7 +120,7 @@ export default function AsistenciaPage() {
       setMostrarModalAsamblea(false);
       setTituloNuevaAsamblea('');
       fetchAsistenciaData();
-      alert('✅ Asamblea iniciada. El QR ya está disponible.');
+      alert('✅ Asamblea iniciada exitosamente.');
       
     } catch (err: any) {
       alert(`❌ Error al iniciar asamblea: ${err.message}`);
@@ -145,7 +145,7 @@ export default function AsistenciaPage() {
       alert(`❌ Error al cerrar asamblea: ${error.message}`);
     } else {
       fetchAsistenciaData();
-      alert('✅ Asamblea finalizada exitosamente.');
+      alert('✅ Asamblea finalizada con éxito.');
     }
   };
 
@@ -184,7 +184,7 @@ export default function AsistenciaPage() {
 
     if (errorObj) {
       if (errorObj.code === '23505') {
-        alert('⚠️ Tu asistencia ya fue registrada exitosamente para esta asamblea.');
+        alert('⚠️ Tu asistencia ya fue registrada exitosamente.');
       } else {
         alert(`❌ Error Supabase: ${errorObj.message}`);
       }
@@ -196,7 +196,7 @@ export default function AsistenciaPage() {
   const handleCheckOut = async () => {
     if (!asambleaActiva || !perfil) return;
     
-    const confirmar = window.confirm("¿Estás seguro de que deseas marcar tu salida? Tu registro quedará en el historial del administrador.");
+    const confirmar = window.confirm("¿Estás seguro de que deseas marcar tu salida?");
     if (!confirmar) return;
 
     setRegistrando(true);
@@ -220,17 +220,17 @@ export default function AsistenciaPage() {
     }
   };
 
-  // INYECCIÓN DE LA URL OFICIAL PARA EL QR USANDO EL DOMINIO DE VERCEL
-  const DOMINIO_OFICIAL = 'https://sindicato-py-igx5350xv-sindicato-py-c.vercel.app';
+  // DOMINIO DE PRODUCCIÓN OFICIAL Y RUTA LIMPIA
+  const DOMINIO_OFICIAL = 'https://sindicato-py-c.vercel.app';
   
-  const qrCheckInUrl = asambleaActiva 
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`${DOMINIO_OFICIAL}/asistencia/registrar/${asambleaActiva.id}`)}&color=0f172a&bgcolor=ffffff&margin=1`
+  const qrCheckInUrl = asambleaActiva && asambleaActiva.id
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`${DOMINIO_OFICIAL}/asistencia/${asambleaActiva.id}`)}&color=0f172a&bgcolor=ffffff&margin=1`
     : 'https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=SinAsambleaActiva&color=94a3b8&bgcolor=ffffff';
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50/50 flex flex-col items-center justify-center">
-        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -249,39 +249,41 @@ export default function AsistenciaPage() {
   const socioRetirado = miRegistroActual && miRegistroActual.estado === 'Retirado';
 
   return (
-    <div className="min-h-screen bg-slate-50/50 font-sans text-slate-900 pb-24 relative overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100/50 to-blue-50/30 font-sans text-slate-900 pb-24 relative overflow-hidden">
       
-      <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-gradient-to-bl from-blue-400/10 to-indigo-400/5 rounded-full blur-[100px] pointer-events-none -mr-40 -mt-20"></div>
-      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] bg-gradient-to-tr from-sky-400/10 to-transparent rounded-full blur-[80px] pointer-events-none -ml-20 mb-20"></div>
+      {/* Elementos decorativos de fondo UI/UX */}
+      <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-bl from-blue-500/10 to-indigo-500/5 rounded-full blur-[100px] pointer-events-none -mr-32 -mt-20"></div>
+      <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-gradient-to-tr from-sky-500/10 to-transparent rounded-full blur-[80px] pointer-events-none -ml-20 mb-10"></div>
 
       <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 mt-8 space-y-8 relative z-10">
         
-        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 p-8 md:p-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 relative overflow-hidden">
-           <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
+        {/* Cabecera Principal */}
+        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-[0_10px_35px_rgba(0,0,0,0.03)] border border-slate-200/60 p-8 md:p-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 relative overflow-hidden">
+           <div className="absolute top-0 right-0 w-40 h-40 bg-blue-500/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
            <div className="relative z-10 flex-1">
-             <span className="bg-blue-50 text-blue-600 text-[10px] font-black uppercase tracking-[0.2em] px-3 py-1.5 rounded-lg mb-4 inline-block">
-               {isAdmin ? 'Panel Directivo' : 'Portal del Socio'}
+             <span className="bg-blue-500/10 text-blue-700 text-[10px] font-black uppercase tracking-[0.2em] px-3.5 py-1.5 rounded-xl mb-4 inline-block border border-blue-500/10">
+               {isAdmin ? 'Panel Directivo Global' : 'Portal del Socio'}
              </span>
-             <h2 className="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight mb-2">
-               Control de Asistencia
+             <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight mb-2">
+               Control de Asistencia y Quórum
              </h2>
-             <p className="text-slate-500 max-w-xl text-sm font-medium leading-relaxed">
+             <p className="text-slate-500 max-w-2xl text-sm font-medium leading-relaxed">
                {isAdmin 
-                 ? 'Monitorea el quórum en tiempo real y audita la asistencia de los socios durante las asambleas oficiales.' 
-                 : 'Valida tu presencia en las asambleas escaneando el código QR habilitado por la directiva.'}
+                 ? 'Gestión en tiempo real del quórum oficial, auditoría de asistencia y transmisión segura.' 
+                 : 'Valida tu presencia escaneando el código QR oficial de la asamblea para habilitar tu acceso.'}
              </p>
            </div>
            
            <div className="w-full lg:w-auto shrink-0 relative z-10">
-             <div className={`px-6 py-5 rounded-2xl border transition-all duration-300 flex flex-col gap-2 ${asambleaActiva ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-700 shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+             <div className={`px-6 py-5 rounded-2xl border transition-all duration-300 flex flex-col gap-3 ${asambleaActiva ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-900 shadow-sm' : 'bg-slate-100/80 border-slate-200 text-slate-600'}`}>
                 <div className="flex items-center gap-4">
-                  <div className="text-3xl">
+                  <div className="text-3xl animate-pulse">
                     {asambleaActiva ? '🟢' : '⏳'}
                   </div>
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] opacity-70 mb-1">Estado Actual</p>
-                    <p className="text-lg font-black tracking-tight">
-                      {asambleaActiva ? 'Sesión en Curso' : 'Sin Sesión Activa'}
+                    <p className="text-[10px] font-black uppercase tracking-[0.15em] opacity-70 mb-0.5">Estado de la Sesión</p>
+                    <p className="text-base font-black tracking-tight">
+                      {asambleaActiva ? 'Asamblea en Curso' : 'Sin Sesión Activa'}
                     </p>
                   </div>
                 </div>
@@ -289,7 +291,7 @@ export default function AsistenciaPage() {
                 {isAdmin && !asambleaActiva && (
                   <button 
                     onClick={() => setMostrarModalAsamblea(true)}
-                    className="mt-2 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2.5 rounded-xl shadow-md text-xs uppercase tracking-wider transition-colors"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-3 px-4 rounded-xl shadow-lg shadow-blue-500/25 text-xs uppercase tracking-wider transition-all transform hover:-translate-y-0.5"
                   >
                     + Iniciar Asamblea
                   </button>
@@ -298,54 +300,54 @@ export default function AsistenciaPage() {
                 {isAdmin && asambleaActiva && (
                   <button 
                     onClick={handleCerrarAsamblea}
-                    className="mt-2 w-full bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl shadow-md text-xs uppercase tracking-wider transition-colors"
+                    className="w-full bg-rose-600 hover:bg-rose-700 text-white font-black py-3 px-4 rounded-xl shadow-lg shadow-rose-500/25 text-xs uppercase tracking-wider transition-all transform hover:-translate-y-0.5"
                   >
                     Cerrar Sesión Oficial
                   </button>
                 )}
-
              </div>
            </div>
         </motion.div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
-          <motion.section initial={{ opacity: 0, x: -15 }} animate={{ opacity: 1, x: 0 }} className="lg:col-span-5 bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 p-8 flex flex-col items-center text-center relative overflow-hidden">
-            <h3 className="text-xl font-black text-slate-800 mb-8 tracking-tight flex items-center gap-2">
-              📷 {isAdmin ? 'QR de la Sesión' : 'Check-in Digital'}
+          {/* Tarjeta de Código QR o Check-in */}
+          <motion.section initial={{ opacity: 0, x: -15 }} animate={{ opacity: 1, x: 0 }} className="lg:col-span-5 bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-[0_10px_35px_rgba(0,0,0,0.03)] border border-slate-200/60 p-8 flex flex-col items-center text-center relative overflow-hidden">
+            <h3 className="text-xl font-black text-slate-900 mb-6 tracking-tight flex items-center gap-2">
+              📷 {isAdmin ? 'Código QR Oficial' : 'Registro Digital'}
             </h3>
             
             {!asambleaActiva ? (
-              <div className="bg-slate-50 border border-dashed border-slate-200 rounded-3xl p-10 w-full flex flex-col items-center justify-center min-h-[320px]">
-                <span className="text-5xl mb-4 block opacity-30 grayscale">🕰️</span>
-                <p className="text-slate-600 font-bold text-lg mb-2">Sala de Espera</p>
+              <div className="bg-slate-50/80 border border-dashed border-slate-200 rounded-[2rem] p-10 w-full flex flex-col items-center justify-center min-h-[340px]">
+                <span className="text-5xl mb-4 block opacity-40">🕰️</span>
+                <p className="text-slate-700 font-black text-lg mb-2">Sala de Espera</p>
                 <p className="text-sm text-slate-400 font-medium px-4">
                   {isAdmin 
-                    ? 'Abre una asamblea desde tu Panel de Control o usa el botón superior para habilitar el QR.' 
-                    : 'La directiva habilitará el código QR al dar inicio a la sesión.'}
+                    ? 'Inicia una asamblea para habilitar dinámicamente el código QR de acceso.' 
+                    : 'La directiva habilitará el código QR al dar inicio oficial a la asamblea.'}
                 </p>
               </div>
             ) : (
-              <div className="space-y-8 w-full flex flex-col items-center">
-                <div className="bg-blue-50 border border-blue-100/50 rounded-2xl p-5 text-center w-full">
-                  <span className="text-[10px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded text-blue-500 mb-2 block">Sesión Habilitada</span>
-                  <h4 className="font-black text-slate-800 text-lg leading-tight">{asambleaActiva.titulo}</h4>
+              <div className="space-y-6 w-full flex flex-col items-center">
+                <div className="bg-blue-50/80 border border-blue-100 rounded-2xl p-4 text-center w-full">
+                  <span className="text-[9px] font-black uppercase tracking-[0.2em] px-2 py-0.5 rounded text-blue-600 mb-1 block">Sesión Habilitada</span>
+                  <h4 className="font-black text-slate-900 text-base leading-tight">{asambleaActiva.titulo}</h4>
                 </div>
 
-                <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-[0_10px_40px_rgb(0,0,0,0.08)] w-fit mx-auto relative group">
-                  <img src={qrCheckInUrl} alt="QR de Asistencia" className="w-56 h-56 rounded-xl transition-transform group-hover:scale-105 duration-500" />
+                <div className="bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-[0_15px_35px_rgba(0,0,0,0.06)] w-fit mx-auto relative group">
+                  <img src={qrCheckInUrl} alt="QR de Asistencia" className="w-56 h-56 rounded-2xl transition-transform group-hover:scale-105 duration-500" />
                   
                   <AnimatePresence>
                     {socioYaMarco && (
-                      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="absolute inset-0 bg-white/90 backdrop-blur-sm rounded-[2rem] flex flex-col items-center justify-center border-2 border-emerald-400">
-                         <span className="text-5xl mb-3 drop-shadow-sm">✅</span>
-                         <span className="text-sm font-black text-emerald-600 uppercase tracking-widest">Presente</span>
+                      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="absolute inset-0 bg-white/95 backdrop-blur-md rounded-[2.5rem] flex flex-col items-center justify-center border-2 border-emerald-400 shadow-xl">
+                         <span className="text-5xl mb-2">✅</span>
+                         <span className="text-xs font-black text-emerald-700 uppercase tracking-widest">Presente</span>
                       </motion.div>
                     )}
                     {socioRetirado && (
-                      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="absolute inset-0 bg-white/90 backdrop-blur-sm rounded-[2rem] flex flex-col items-center justify-center border-2 border-slate-300">
-                         <span className="text-5xl mb-3 drop-shadow-sm">👋</span>
-                         <span className="text-sm font-black text-slate-600 uppercase tracking-widest">Salida Marcada</span>
+                      <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="absolute inset-0 bg-white/95 backdrop-blur-md rounded-[2.5rem] flex flex-col items-center justify-center border-2 border-slate-300 shadow-xl">
+                         <span className="text-5xl mb-2">👋</span>
+                         <span className="text-xs font-black text-slate-700 uppercase tracking-widest">Salida Registrada</span>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -353,29 +355,29 @@ export default function AsistenciaPage() {
 
                 {!isAdmin && (
                   <div className="w-full pt-2">
-                    <p className="text-sm text-slate-500 font-medium mb-6 px-4">
+                    <p className="text-xs text-slate-500 font-medium mb-6 px-4">
                       {socioYaMarco 
-                        ? 'Estás registrado en la asamblea. Si debes retirarte, marca tu salida para el registro.' 
+                        ? 'Tu asistencia está confirmada. Si necesitas retirarte, utiliza el botón inferior.' 
                         : socioRetirado 
-                        ? 'Has marcado tu salida. Puedes volver a registrar tu ingreso si regresaste.'
-                        : 'Escanea este código o usa el botón para marcar tu presencia.'}
+                        ? 'Has marcado tu salida de la sesión.'
+                        : 'Escanea el código con tu celular o marca tu asistencia directamente aquí.'}
                     </p>
                     
                     {socioYaMarco ? (
                       <button 
                         onClick={handleCheckOut}
                         disabled={registrando}
-                        className="w-full font-bold py-4 rounded-2xl transition-all text-sm uppercase tracking-wider flex items-center justify-center gap-2 bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-500 hover:text-white"
+                        className="w-full font-black py-4 rounded-2xl transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2 bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-500 hover:text-white shadow-sm"
                       >
-                        {registrando ? 'Procesando...' : '👋 Marcar Salida'}
+                        {registrando ? 'Procesando...' : '👋 Marcar Salida Oficial'}
                       </button>
                     ) : (
                       <button 
                         onClick={handleCheckInQR}
                         disabled={registrando}
-                        className="w-full font-bold py-4 rounded-2xl transition-all text-sm uppercase tracking-wider flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/30 hover:-translate-y-0.5"
+                        className="w-full font-black py-4 rounded-2xl transition-all text-xs uppercase tracking-widest flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/30 transform hover:-translate-y-0.5"
                       >
-                        {registrando ? 'Verificando...' : socioRetirado ? '🔄 Reingresar' : '✓ Registrar Asistencia'}
+                        {registrando ? 'Verificando...' : socioRetirado ? '🔄 Reingresar a Sesión' : '✓ Registrar mi Asistencia'}
                       </button>
                     )}
                   </div>
@@ -383,14 +385,14 @@ export default function AsistenciaPage() {
                 
                 {isAdmin && (
                   <div className="w-full pt-2">
-                    <p className="text-xs text-slate-400 font-bold uppercase tracking-[0.15em] text-center border-t border-slate-100 pt-6">
-                      Muestra este QR a los socios
+                    <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] text-center border-t border-slate-100 pt-5">
+                      Proyecta este código en la pantalla
                     </p>
                     <button 
                        onClick={() => router.push('/asamblea')}
-                       className="mt-4 w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 rounded-xl shadow-md text-xs uppercase tracking-widest transition-colors flex justify-center items-center gap-2"
+                       className="mt-4 w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl shadow-lg shadow-slate-900/20 text-xs uppercase tracking-widest transition-all flex justify-center items-center gap-2 transform hover:-translate-y-0.5"
                     >
-                      <span>🎥</span> Entrar a la Sala Virtual
+                      <span>🎥</span> Entrar a la Sala Virtual (Jitsi)
                     </button>
                   </div>
                 )}
@@ -398,43 +400,44 @@ export default function AsistenciaPage() {
             )}
           </motion.section>
 
-          <motion.section initial={{ opacity: 0, x: 15 }} animate={{ opacity: 1, x: 0 }} className="lg:col-span-7 bg-white rounded-3xl shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 p-8 flex flex-col overflow-hidden h-full min-h-[550px]">
+          {/* Tarjeta de Quórum en Vivo / Historial Global */}
+          <motion.section initial={{ opacity: 0, x: 15 }} animate={{ opacity: 1, x: 0 }} className="lg:col-span-7 bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-[0_10px_35px_rgba(0,0,0,0.03)] border border-slate-200/60 p-8 flex flex-col overflow-hidden h-full min-h-[550px]">
             
             {isAdmin ? (
               <>
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
-                  <h3 className="text-xl font-black text-slate-800 tracking-tight flex items-center gap-3">
-                    <span className="p-2.5 bg-indigo-50 rounded-xl text-indigo-600 border border-indigo-100/50 text-lg">📊</span> 
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                    <span className="p-2.5 bg-indigo-50 rounded-2xl text-indigo-600 border border-indigo-100 text-lg">📊</span> 
                     Quórum en Vivo
                   </h3>
                   {asambleaActiva && (
-                    <div className="bg-slate-800 text-white px-5 py-3 rounded-2xl shadow-md flex items-center gap-4">
-                      <span className="text-xs font-bold uppercase tracking-widest text-slate-400">Total:</span>
+                    <div className="bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-md flex items-center gap-4">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Presentes:</span>
                       <div className="flex items-baseline gap-1">
                         <span className="text-2xl font-black text-emerald-400 leading-none">{presentesQuorum}</span>
-                        <span className="text-xs text-slate-400 font-medium">/ {asistenciasAsambleaActual.length} reg.</span>
+                        <span className="text-xs text-slate-400 font-bold">/ {asistenciasAsambleaActual.length} reg.</span>
                       </div>
                     </div>
                   )}
                 </div>
 
                 {!asambleaActiva ? (
-                  <div className="flex-1 flex flex-col items-center justify-center opacity-40 py-12 text-center grayscale">
+                  <div className="flex-1 flex flex-col items-center justify-center opacity-40 py-12 text-center">
                     <span className="text-6xl mb-6 block">📈</span>
-                    <p className="text-slate-500 font-bold text-lg">Inicia una asamblea para monitorear el quórum.</p>
+                    <p className="text-slate-600 font-bold text-base">Inicia una asamblea para monitorear el quórum global.</p>
                   </div>
                 ) : asistenciasAsambleaActual.length === 0 ? (
-                  <div className="flex-1 bg-slate-50 border border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center py-16 text-center">
-                    <span className="text-5xl mb-4 block opacity-30 grayscale">🪑</span>
-                    <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Esperando a los primeros socios...</p>
+                  <div className="flex-1 bg-slate-50/80 border border-dashed border-slate-200 rounded-[2rem] flex flex-col items-center justify-center py-16 text-center">
+                    <span className="text-5xl mb-4 block opacity-40">🪑</span>
+                    <p className="text-slate-500 font-black uppercase tracking-widest text-xs">Esperando registros de los socios...</p>
                   </div>
                 ) : (
                   <div className="flex-1 overflow-hidden flex flex-col">
-                    <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white">
+                    <div className="overflow-x-auto rounded-2xl border border-slate-100 bg-white shadow-sm">
                       <table className="w-full text-left min-w-[450px]">
                         <thead className="bg-slate-50/80 border-b border-slate-100 sticky top-0 z-10 backdrop-blur-sm">
                           <tr>
-                            <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Socio Registrado</th>
+                            <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider">Socio / Afiliado</th>
                             <th className="px-5 py-4 text-[10px] font-black text-slate-400 uppercase tracking-wider text-right">Hora de Ingreso</th>
                           </tr>
                         </thead>
@@ -443,11 +446,11 @@ export default function AsistenciaPage() {
                             <tr key={item.id} className="hover:bg-slate-50/60 transition-colors group">
                               <td className="px-5 py-4">
                                 <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs shrink-0">
+                                  <div className="w-9 h-9 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-xs shrink-0 border border-blue-100">
                                     {(item.profiles?.full_name || 'U').charAt(0)}
                                   </div>
                                   <div>
-                                    <span className="font-bold text-slate-800 text-sm block group-hover:text-blue-600 transition-colors">
+                                    <span className="font-bold text-slate-900 text-sm block group-hover:text-blue-600 transition-colors">
                                       {item.profiles?.full_name || 'Usuario Sindicato'}
                                     </span>
                                     <span className="text-[11px] font-medium text-slate-400">{item.usuario_rut}</span>
@@ -455,7 +458,7 @@ export default function AsistenciaPage() {
                                 </div>
                               </td>
                               <td className="px-5 py-4 text-right">
-                                <span className="inline-flex items-center gap-2 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-100/50">
+                                <span className="inline-flex items-center gap-2 px-3.5 py-1.5 text-[10px] font-black uppercase tracking-wider rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-100">
                                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                                   {new Date(item.fecha_asistencia).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' })}
                                 </span>
@@ -471,17 +474,17 @@ export default function AsistenciaPage() {
             ) : (
               <>
                 <div className="flex items-center gap-3 mb-8">
-                  <span className="p-2.5 bg-blue-50 rounded-xl text-blue-600 border border-blue-100/50 text-lg">📋</span> 
-                  <h3 className="text-xl font-black text-slate-800 tracking-tight">Mis Asistencias</h3>
+                  <span className="p-2.5 bg-blue-50 rounded-2xl text-blue-600 border border-blue-100 text-lg">📋</span> 
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Historial de Mis Asistencias</h3>
                 </div>
 
                 {asistencias.length === 0 ? (
-                  <div className="flex-1 bg-slate-50 border border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center py-16 text-center">
-                    <span className="text-5xl mb-4 block opacity-30 grayscale">📂</span>
-                    <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">Aún no tienes registros de asistencia.</p>
+                  <div className="flex-1 bg-slate-50/80 border border-dashed border-slate-200 rounded-[2rem] flex flex-col items-center justify-center py-16 text-center">
+                    <span className="text-5xl mb-4 block opacity-40">📂</span>
+                    <p className="text-slate-500 font-black uppercase tracking-widest text-xs">Aún no cuentas con registros de asistencia.</p>
                   </div>
                 ) : (
-                  <div className="space-y-4 overflow-y-auto pr-2 max-h-[500px] custom-scrollbar">
+                  <div className="space-y-4 overflow-y-auto pr-2 max-h-[500px]">
                     <AnimatePresence>
                       {asistencias.map((item) => (
                         <motion.div 
@@ -489,13 +492,13 @@ export default function AsistenciaPage() {
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, scale: 0.95 }}
-                          className="p-5 border border-slate-100 bg-white rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-[0_8px_30px_rgb(0,0,0,0.06)] hover:border-slate-200 transition-all group"
+                          className="p-5 border border-slate-100 bg-white rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm hover:shadow-md transition-all group"
                         >
                           <div>
-                            <span className={`text-[9px] font-black uppercase tracking-[0.15em] px-2.5 py-1 rounded-md border mb-2.5 inline-block ${item.estado === 'Retirado' ? 'bg-slate-50 text-slate-500 border-slate-200' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
-                              {item.estado === 'Retirado' ? 'Finalizada / Salida' : 'Asistencia Válida'}
+                            <span className={`text-[9px] font-black uppercase tracking-[0.15em] px-2.5 py-1 rounded-lg border mb-2 inline-block ${item.estado === 'Retirado' ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200'}`}>
+                              {item.estado === 'Retirado' ? 'Sesión Finalizada' : 'Asistencia Válida'}
                             </span>
-                            <h4 className={`font-bold text-base leading-tight transition-colors ${item.estado === 'Retirado' ? 'text-slate-500' : 'text-slate-800 group-hover:text-blue-600'}`}>
+                            <h4 className="font-black text-slate-900 text-base leading-tight group-hover:text-blue-600 transition-colors">
                               {item.asamblea_titulo}
                             </h4>
                           </div>
@@ -503,7 +506,7 @@ export default function AsistenciaPage() {
                           <div className="shrink-0 text-left sm:text-right bg-slate-50 px-4 py-3 rounded-xl border border-slate-100 w-full sm:w-auto">
                             <div className="flex justify-between sm:justify-end items-center gap-4">
                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ingreso:</span>
-                              <span className="text-xs font-bold text-slate-700">
+                              <span className="text-xs font-black text-slate-700">
                                 {new Date(item.fecha_asistencia).toLocaleString('es-CL', { 
                                   day: '2-digit', month: '2-digit', year: 'numeric', 
                                   hour: '2-digit', minute: '2-digit' 
@@ -512,9 +515,9 @@ export default function AsistenciaPage() {
                             </div>
                             
                             {item.estado === 'Retirado' && item.hora_salida && (
-                              <div className="flex justify-between sm:justify-end items-center gap-4 mt-2.5 border-t border-slate-200 pt-2.5">
+                              <div className="flex justify-between sm:justify-end items-center gap-4 mt-2 pt-2 border-t border-slate-200">
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Salida:</span>
-                                <span className="text-xs font-bold text-rose-500">
+                                <span className="text-xs font-black text-rose-500">
                                   {new Date(item.hora_salida).toLocaleString('es-CL', { 
                                     day: '2-digit', month: '2-digit', year: 'numeric', 
                                     hour: '2-digit', minute: '2-digit' 
@@ -534,37 +537,37 @@ export default function AsistenciaPage() {
         </div>
       </main>
 
-      {/* Modal para Crear Nueva Asamblea */}
+      {/* Modal para Iniciar Asamblea */}
       {mostrarModalAsamblea && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-md p-4">
           <motion.div 
             initial={{ opacity: 0, scale: 0.95, y: 20 }} 
             animate={{ opacity: 1, scale: 1, y: 0 }} 
-            className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md border border-slate-200 overflow-hidden"
+            className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-200 overflow-hidden"
           >
-            <div className="p-6 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-              <h3 className="text-lg font-black text-slate-800">Iniciar Sesión Oficial</h3>
-              <button onClick={() => setMostrarModalAsamblea(false)} className="text-slate-400 hover:text-slate-700 font-bold">✕</button>
+            <div className="p-6 border-b border-slate-100 bg-slate-50/80 flex justify-between items-center">
+              <h3 className="text-base font-black text-slate-900">Iniciar Sesión Oficial</h3>
+              <button onClick={() => setMostrarModalAsamblea(false)} className="text-slate-400 hover:text-slate-700 font-black text-lg">✕</button>
             </div>
             <form onSubmit={handleIniciarAsamblea} className="p-8 space-y-6">
               <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
                   Título de la Asamblea
                 </label>
                 <input 
                   type="text" 
                   required 
                   autoFocus
-                  placeholder="Ej: Asamblea Extraordinaria Octubre"
+                  placeholder="Ej: Asamblea Ordinaria Octubre"
                   value={tituloNuevaAsamblea} 
                   onChange={e => setTituloNuevaAsamblea(e.target.value)} 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all" 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3.5 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all" 
                 />
               </div>
               <button 
                 type="submit" 
                 disabled={iniciandoAsamblea} 
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl shadow-lg shadow-blue-500/30 transition-all uppercase tracking-wider text-sm"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-2xl shadow-lg shadow-blue-500/30 transition-all uppercase tracking-widest text-xs"
               >
                 {iniciandoAsamblea ? 'Creando registro...' : 'Abrir Asamblea y Generar QR'}
               </button>
