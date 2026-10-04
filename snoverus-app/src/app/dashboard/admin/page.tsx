@@ -11,6 +11,9 @@ export default function AdminPanel() {
   const [isMounted, setIsMounted] = useState(false);
   const [validando, setValidando] = useState(true);
 
+  // Estado del guardián de acceso
+  const [accesoBloqueado, setAccesoBloqueado] = useState({ bloqueado: false, motivo: '' });
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [idSindicatoActual, setIdSindicatoActual] = useState<number | null>(null);
   const [editNombreSindicato, setEditNombreSindicato] = useState('');
@@ -75,11 +78,28 @@ export default function AdminPanel() {
   const validarAccesoAdmin = async () => {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    
+
     if (user) {
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-      const rolUsuario = String(data?.role || '').trim().toLowerCase();
+      // 1. Validar estado individual del Usuario Admin
+      const { data: profile } = await supabase.from('profiles').select('sindicato_id, role, estado').eq('id', user.id).single();
       
+      if (profile?.estado?.toLowerCase() === 'suspendido') {
+        setAccesoBloqueado({ bloqueado: true, motivo: 'Tu cuenta de administrador ha sido suspendida individualmente por Superadmin.' });
+        setValidando(false);
+        return;
+      }
+
+      if (profile?.sindicato_id) {
+        // 2. Validar estado global de su Sindicato
+        const { data: sindicatoData } = await supabase.from('sindicatos').select('estado').eq('id', profile.sindicato_id).single();
+        if (sindicatoData?.estado?.toLowerCase() === 'suspendido') {
+          setAccesoBloqueado({ bloqueado: true, motivo: 'El acceso administrativo de esta organización ha sido bloqueado globalmente.' });
+          setValidando(false);
+          return;
+        }
+      }
+
+      const rolUsuario = String(profile?.role || '').trim().toLowerCase();
       if (['superadmin', 'admin', 'administrador', 'directiva'].includes(rolUsuario)) {
         setValidando(false);
         fetchEnterpriseData(); 
@@ -106,24 +126,21 @@ export default function AdminPanel() {
             setEditLogoSindicato(sindicato.logo_url || '');
           }
 
-          // === 🛡️ FILTRO DE AISLAMIENTO: Solo datos de TU Sindicato ===
           const { data: usersData } = await supabase.from('profiles').select('*').eq('sindicato_id', profile.sindicato_id).order('created_at', { ascending: false });
           if (Array.isArray(usersData)) setUsuarios(usersData);
-          
+
           const { data: ticketsData } = await supabase.from('tickets_soporte').select('*').eq('sindicato_id', profile.sindicato_id).order('created_at', { ascending: false });
           if (Array.isArray(ticketsData)) setTickets(ticketsData);
-          
+
           const { data: encData } = await supabase.from('encuestas_clima').select('*').eq('sindicato_id', profile.sindicato_id);
           if (Array.isArray(encData)) setEncuestasData(encData);
-          
+
           const { data: citasData } = await supabase.from('agenda_legal').select('*').eq('sindicato_id', profile.sindicato_id).order('fecha_reserva', { ascending: false });
           if (Array.isArray(citasData)) setCitas(citasData);
 
           const { data: postData } = await supabase.from('postulaciones').select('*').eq('sindicato_id', profile.sindicato_id).eq('estado', 'Pendiente').order('created_at', { ascending: false });
           if (Array.isArray(postData)) setPostulaciones(postData);
 
-          // Nota: Si fondo_aportes o negociacion_info no tenían sindicato_id antes, omitimos el filtro ahí para evitar crash,
-          // pero lo aplicamos estrictamente al padrón y postulantes como pediste.
           const { data: aportesData } = await supabase.from('fondo_aportes').select('monto').eq('estado', 'Aprobado');
           if (aportesData) setFondoRecaudado(aportesData.reduce((sum, a) => sum + Number(a.monto), 0));
 
@@ -407,7 +424,7 @@ export default function AdminPanel() {
 
       const supabase = createClient();
       const { error } = await supabase.from('tickets_soporte').update({ estado: 'Resuelto' }).eq('id', ticketSeleccionado.id);
-      
+
       if (!error) {
         setTickets(tickets.map(t => t.id === ticketSeleccionado.id ? { ...t, estado: 'Resuelto' } : t));
         alert(`✅ Correo enviado y ticket marcado como resuelto.`);
@@ -427,6 +444,21 @@ export default function AdminPanel() {
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  // PANTALLA DE BLOQUEO PARA ADMINS
+  if (accesoBloqueado.bloqueado) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-6 relative overflow-hidden">
+        <div className="absolute top-0 w-full h-2 bg-rose-600"></div>
+        <div className="w-24 h-24 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center text-5xl mb-6 border border-rose-500/20">⛔</div>
+        <h1 className="text-3xl font-black mb-3 tracking-tight">Acceso Restringido</h1>
+        <p className="text-slate-400 mb-10 text-center max-w-md font-medium leading-relaxed">{accesoBloqueado.motivo}</p>
+        <button onClick={handleLogout} className="px-8 py-3.5 bg-white text-slate-900 hover:bg-slate-200 rounded-xl font-black transition-colors uppercase tracking-widest text-xs">
+          Volver al Inicio
+        </button>
       </div>
     );
   }
@@ -457,12 +489,12 @@ export default function AdminPanel() {
   return (
     <div className="min-h-screen bg-[#f4f7fb] font-sans pb-24 text-slate-900 selection:bg-blue-300 relative overflow-hidden" 
          onClick={() => { if (menuAbiertoId) setMenuAbiertoId(null); if (ticketMenuAbiertoId) setTicketMenuAbiertoId(null); }}>
-      
+
       <div className="absolute top-0 left-0 w-[500px] h-[500px] bg-blue-400/20 rounded-full blur-[120px] -translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
       <div className="absolute top-40 right-0 w-[600px] h-[600px] bg-purple-400/10 rounded-full blur-[150px] translate-x-1/3 pointer-events-none"></div>
 
       <div className="flex flex-col md:flex-row h-screen">
-        
+
         {/* SIDEBAR ADMINISTRADOR LOCAL */}
         <aside className="w-full md:w-72 bg-gradient-to-b from-[#0f172a] to-[#1e293b] text-white flex flex-col shadow-2xl relative z-20 shrink-0">
           <div className="p-8 border-b border-white/10">
@@ -505,7 +537,7 @@ export default function AdminPanel() {
         {/* CONTENIDO PRINCIPAL */}
         <main className="flex-1 overflow-y-auto relative p-6 md:p-10">
           <div className="max-w-7xl mx-auto space-y-8 relative z-10">
-            
+
             {/* TAB 1: DASHBOARD Y MÉTRICAS */}
             {activeTab === 'dashboard' && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">

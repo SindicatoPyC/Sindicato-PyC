@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createClient } from '../lib/supabase';
 
@@ -9,14 +9,44 @@ export default function PostularPage() {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [telefono, setTelefono] = useState('');
+  const [sindicatoId, setSindicatoId] = useState('');
+  
+  const [sindicatos, setSindicatos] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [enviado, setEnviado] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Cargar la lista completa de sindicatos disponibles al montar el componente
+  useEffect(() => {
+    async function cargarSindicatos() {
+      const supabase = createClient();
+      
+      // Eliminamos el .eq('estado', 'Activo') para traerlos todos y filtrar localmente
+      const { data, error } = await supabase
+        .from('sindicatos')
+        .select('id, nombre, estado');
+      
+      if (!error && data) {
+        // Mostramos todos excepto los que estén explícitamente suspendidos
+        const sindicatosVisibles = data.filter(s => 
+          !s.estado || s.estado.toLowerCase() !== 'suspendido'
+        );
+        setSindicatos(sindicatosVisibles);
+      }
+    }
+    cargarSindicatos();
+  }, []);
 
   const handlePostular = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg('');
+
+    if (!sindicatoId) {
+      setErrorMsg('Debes seleccionar la organización a la que deseas postular.');
+      setLoading(false);
+      return;
+    }
 
     const cleanRut = rut.replace(/[^0-9kK]/g, '').toUpperCase();
 
@@ -27,21 +57,23 @@ export default function PostularPage() {
         .from('profiles')
         .select('id')
         .eq('rut', cleanRut)
+        .eq('sindicato_id', parseInt(sindicatoId))
         .maybeSingle();
 
       if (socioExistente) {
-        throw new Error('Este RUT ya está registrado como socio activo. Inicia sesión.');
+        throw new Error('Este RUT ya está registrado como socio activo en esta organización. Inicia sesión.');
       }
 
       const { data: postulacionExistente } = await supabase
         .from('postulaciones')
         .select('id')
         .eq('rut', cleanRut)
+        .eq('sindicato_id', parseInt(sindicatoId))
         .eq('estado', 'Pendiente')
         .maybeSingle();
 
       if (postulacionExistente) {
-        throw new Error('Ya tienes una postulación en revisión con este RUT.');
+        throw new Error('Ya tienes una postulación en revisión con este RUT para esta organización.');
       }
 
       const { error: insertError } = await supabase
@@ -51,14 +83,15 @@ export default function PostularPage() {
           full_name: fullName,
           email: email,
           telefono: telefono, 
-          estado: 'Pendiente'
+          estado: 'Pendiente',
+          sindicato_id: parseInt(sindicatoId)
         }]);
 
       if (insertError) throw insertError;
 
       setEnviado(true);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Error al enviar la postulación. Intenta nuevamente.');
+      setErrorMsg(err.message || 'Error al enviar la postulación. Verifica las políticas RLS en Supabase.');
     } finally {
       setLoading(false);
     }
@@ -94,10 +127,10 @@ export default function PostularPage() {
                 📋 Formulario de Ingreso
               </div>
               <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-white drop-shadow-sm">
-                Postular al Sindicato
+                Postular a la Organización
               </h2>
               <p className="text-slate-400 text-sm font-medium">
-                Ingresa tus datos reales para solicitar validación
+                Ingresa tus datos y selecciona tu sindicato
               </p>
             </div>
 
@@ -109,6 +142,27 @@ export default function PostularPage() {
             )}
 
             <form onSubmit={handlePostular} className="space-y-6">
+              
+              {/* Selector de Sindicato */}
+              <div className="space-y-2 group">
+                <label className="block text-[11px] font-bold text-cyan-600 uppercase tracking-wider pl-1 transition-colors group-focus-within:text-cyan-400 drop-shadow-sm">
+                  Organización a Postular
+                </label>
+                <select 
+                  required
+                  value={sindicatoId}
+                  onChange={(e) => setSindicatoId(e.target.value)}
+                  className="w-full bg-[#0a1128] border border-cyan-900/60 rounded-xl px-5 py-4 text-cyan-50 focus:outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/20 focus:bg-[#0d1838] transition-all font-medium text-sm shadow-inner appearance-none"
+                >
+                  <option value="" disabled>Selecciona tu organización...</option>
+                  {sindicatos.map((sindicato) => (
+                    <option key={sindicato.id} value={sindicato.id}>
+                      {sindicato.nombre}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div className="space-y-2 group">
                 <label className="block text-[11px] font-bold text-cyan-600 uppercase tracking-wider pl-1 transition-colors group-focus-within:text-cyan-400 drop-shadow-sm">
                   Nombre Completo

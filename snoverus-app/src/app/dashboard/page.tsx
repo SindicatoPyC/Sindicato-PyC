@@ -2,10 +2,12 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { createClient } from '../lib/supabase';
 import Carrusel from '../../components/Carrusel';
 
 export default function Dashboard() {
+  const router = useRouter();
   const [comunicados, setComunicados] = useState<any[]>([]);
   const [asambleas, setAsambleas] = useState<any[]>([]);
   const [documentos, setDocumentos] = useState<any[]>([]);
@@ -19,6 +21,9 @@ export default function Dashboard() {
   const [modoEdicion, setModoEdicion] = useState(false);
   const [guardandoCambios, setGuardandoCambios] = useState(false);
   const [slideActual, setSlideActual] = useState(0);
+
+  // Estado del guardián de acceso
+  const [accesoBloqueado, setAccesoBloqueado] = useState({ bloqueado: false, motivo: '' });
 
   const [config, setConfig] = useState({
     tema: { color_primario: '#020617', color_secundario: '#3b82f6', estilo_carrusel: 'moderno' },
@@ -40,13 +45,28 @@ export default function Dashboard() {
         const { data: { user } } = await supabase.auth.getUser();
 
         if (user) {
-          const { data: profile } = await supabase.from('profiles').select('sindicato_id, role').eq('id', user.id).single();
+          // 1. Validar estado individual del Usuario
+          const { data: profile } = await supabase.from('profiles').select('sindicato_id, role, estado').eq('id', user.id).single();
+          
+          if (profile?.estado?.toLowerCase() === 'suspendido') {
+            setAccesoBloqueado({ bloqueado: true, motivo: 'Tu cuenta ha sido suspendida individualmente. Contacta a tu directiva.' });
+            setLoading(false);
+            return;
+          }
+
           if (profile?.role) setUserRol(profile.role);
 
           if (profile?.sindicato_id) {
             setSindicatoId(profile.sindicato_id);
-            const { data: sindicatoData } = await supabase.from('sindicatos').select('configuracion, nombre').eq('id', profile.sindicato_id).single();
+            // 2. Validar estado global del Sindicato
+            const { data: sindicatoData } = await supabase.from('sindicatos').select('configuracion, nombre, estado').eq('id', profile.sindicato_id).single();
             
+            if (sindicatoData?.estado?.toLowerCase() === 'suspendido') {
+              setAccesoBloqueado({ bloqueado: true, motivo: 'El acceso de tu organización ha sido suspendido por la administración global.' });
+              setLoading(false);
+              return;
+            }
+
             if (sindicatoData) {
               setSindicatoNombre(sindicatoData.nombre || '');
               if (sindicatoData.configuracion) {
@@ -186,10 +206,32 @@ export default function Dashboard() {
     }
   };
 
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    document.cookie = "sb-sindicato-session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+    router.push('/');
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950">
         <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  // PANTALLA DE BLOQUEO
+  if (accesoBloqueado.bloqueado) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-6 relative overflow-hidden">
+        <div className="absolute top-0 w-full h-2 bg-rose-600"></div>
+        <div className="w-24 h-24 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center text-5xl mb-6 border border-rose-500/20">⛔</div>
+        <h1 className="text-3xl font-black mb-3 tracking-tight">Acceso Restringido</h1>
+        <p className="text-slate-400 mb-10 text-center max-w-md font-medium leading-relaxed">{accesoBloqueado.motivo}</p>
+        <button onClick={handleLogout} className="px-8 py-3.5 bg-white text-slate-900 hover:bg-slate-200 rounded-xl font-black transition-colors uppercase tracking-widest text-xs">
+          Volver al Inicio
+        </button>
       </div>
     );
   }
@@ -401,7 +443,7 @@ export default function Dashboard() {
                 </div>
                 
                 <div className="space-y-6">
-                  {/* === ASAMBLEA VIRTUAL JITSI (REINCORPORADA) === */}
+                  {/* === ASAMBLEA VIRTUAL JITSI === */}
                   <div className="relative bg-white/5 rounded-[2rem] p-8 sm:p-10 shadow-xl border border-white/10 overflow-hidden group hover:border-white/20 transition-colors backdrop-blur-xl">
                     <div className="absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl opacity-20 group-hover:opacity-30 transition-opacity duration-700" style={{ backgroundColor: config.tema.color_secundario }}></div>
                     <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-8">
