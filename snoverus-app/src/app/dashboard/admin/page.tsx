@@ -64,27 +64,7 @@ export default function AdminPanel() {
     }
   }, [isMounted]);
 
-  // Función auxiliar pura para recargar SOLO las asistencias (evita peticiones pesadas y errores 400)
-  const refrescarAsistencias = async (sindicatoId: number) => {
-    try {
-      const supabase = createClient();
-      const { data, error } = await supabase
-        .from('asistencia_asambleas')
-        .select(`
-          *,
-          profiles:usuario_rut(full_name, rut)
-        `)
-        .eq('sindicato_id', sindicatoId);
-      
-      if (!error && data) {
-        setAsistenciaRegistros(data);
-      }
-    } catch (err) {
-      console.error('Error refrescando asistencia:', err);
-    }
-  };
-
-  // 🔴 NUEVO: SUSCRIPCIÓN EN TIEMPO REAL ROBUSTA
+  // SUSCRIPCIÓN EN TIEMPO REAL ROBUSTA
   useEffect(() => {
     if (!idSindicatoActual) return;
 
@@ -100,10 +80,17 @@ export default function AdminPanel() {
           table: 'asistencia_asambleas',
           filter: `sindicato_id=eq.${idSindicatoActual}`
         },
-        (payload) => {
+        async (payload) => {
           console.log('Cambio de asistencia detectado:', payload);
-          // Recargamos silenciosamente los datos
-          refrescarAsistencias(idSindicatoActual);
+          // Consulta simple sin join complejo para evitar error 400
+          const { data: asistData } = await supabase
+            .from('asistencia_asambleas')
+            .select('*')
+            .eq('sindicato_id', idSindicatoActual);
+            
+          if (Array.isArray(asistData)) {
+            setAsistenciaRegistros(asistData);
+          }
         }
       )
       .subscribe();
@@ -187,8 +174,9 @@ export default function AdminPanel() {
           const { data: histData } = await supabase.from('historial_asambleas').select('*').eq('sindicato_id', profile.sindicato_id).order('created_at', { ascending: false });
           if (Array.isArray(histData)) setHistorialAsambleas(histData);
 
-          // Cargar datos iniciales de asistencia
-          await refrescarAsistencias(profile.sindicato_id);
+          // Carga inicial simple
+          const { data: asistData } = await supabase.from('asistencia_asambleas').select('*').eq('sindicato_id', profile.sindicato_id);
+          if (Array.isArray(asistData)) setAsistenciaRegistros(asistData);
         }
       }
     } catch (err) {
@@ -644,13 +632,17 @@ export default function AdminPanel() {
                             ) : (
                               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                                 {asistentesEstaAsamblea.map((asist) => {
+                                  // Hacemos el cruce con los usuarios del padrón para obtener el nombre
+                                  const perfilSocio = usuarios.find(u => u.rut === asist.usuario_rut);
+                                  const nombreSocio = perfilSocio?.full_name || 'Socio Sindicato';
+
                                   const horaIngreso = new Date(asist.fecha_asistencia || asist.created_at).toLocaleTimeString('es-CL', {
                                     hour: '2-digit', minute: '2-digit'
                                   });
                                   return (
                                     <div key={asist.id} className="p-4 bg-slate-50/80 rounded-2xl border border-slate-100 flex flex-col justify-between space-y-2">
                                       <div>
-                                        <span className="text-xs font-black text-slate-800 block truncate">{asist.profiles?.full_name || 'Socio'}</span>
+                                        <span className="text-xs font-black text-slate-800 block truncate">{nombreSocio}</span>
                                         <span className="text-[11px] text-slate-500 font-bold mt-0.5">{asist.usuario_rut || 'Sin RUT'}</span>
                                       </div>
                                       <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[10px]">
