@@ -27,7 +27,7 @@ export default function AdminPanel() {
   const [tituloAsamblea, setTituloAsamblea] = useState('');
   const [loadingAsamblea, setLoadingAsamblea] = useState(false);
 
-  // Estados para Historial y Asistencia de Asambleas con Auditoría
+  // Estados para Historial y Asistencia de Asambleas con Auditoría en Tiempo Real
   const [historialAsambleas, setHistorialAsambleas] = useState<any[]>([]);
   const [asistenciaRegistros, setAsistenciaRegistros] = useState<any[]>([]);
   const [tituloNuevaAsamblea, setTituloNuevaAsamblea] = useState('');
@@ -71,7 +71,8 @@ export default function AdminPanel() {
     if (user) {
       const { data: profile } = await supabase.from('profiles').select('sindicato_id, role, estado').eq('id', user.id).single();
       
-      if (profile?.estado?.toLowerCase() === 'suspendido') {
+      const estadoUsuario = String(profile?.estado || '').trim().toLowerCase();
+      if (estadoUsuario === 'suspendido') {
         setAccesoBloqueado({ bloqueado: true, motivo: 'Tu cuenta de administrador ha sido suspendida individualmente.' });
         setValidando(false);
         return;
@@ -79,7 +80,8 @@ export default function AdminPanel() {
 
       if (profile?.sindicato_id) {
         const { data: sindicatoData } = await supabase.from('sindicatos').select('estado').eq('id', profile.sindicato_id).single();
-        if (sindicatoData?.estado?.toLowerCase() === 'suspendido') {
+        const estadoSindicato = String(sindicatoData?.estado || '').trim().toLowerCase();
+        if (estadoSindicato === 'suspendido') {
           setAccesoBloqueado({ bloqueado: true, motivo: 'El acceso administrativo de esta organización ha sido bloqueado.' });
           setValidando(false);
           return;
@@ -132,7 +134,6 @@ export default function AdminPanel() {
           const { data: aportesData } = await supabase.from('fondo_aportes').select('monto').eq('estado', 'Aprobado');
           if (aportesData) setFondoRecaudado(aportesData.reduce((sum, a) => sum + Number(a.monto), 0));
 
-          // Cargar Historial y Asistencia de Asambleas
           const { data: histData } = await supabase.from('historial_asambleas').select('*').eq('sindicato_id', profile.sindicato_id).order('created_at', { ascending: false });
           if (Array.isArray(histData)) setHistorialAsambleas(histData);
 
@@ -287,6 +288,30 @@ export default function AdminPanel() {
     } catch (err: any) { console.error(err); }
   };
 
+  const abrirModalResolucion = (ticket: any) => {
+    setTicketSeleccionado(ticket);
+    setDetalleResolucion('');
+  };
+
+  const confirmarResolucionTicket = async () => {
+    if (!detalleResolucion.trim()) return alert("Debes ingresar un detalle de resolución.");
+    setProcesandoTicket(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('tickets_soporte').update({ estado: 'Resuelto' }).eq('id', ticketSeleccionado.id);
+
+      if (!error) {
+        setTickets(tickets.map(t => t.id === ticketSeleccionado.id ? { ...t, estado: 'Resuelto' } : t));
+        alert(`✅ Ticket marcado como resuelto.`);
+        setTicketSeleccionado(null);
+      }
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setProcesandoTicket(false);
+    }
+  };
+
   const procesarPostulanteSupabase = async (postulacion: any) => {
     const supabase = createClient();
     const cleanRut = postulacion.rut.replace(/[^0-9kK]/g, '');
@@ -325,26 +350,6 @@ export default function AdminPanel() {
     } catch (err) {}
   };
 
-  const abrirModalResolucion = (ticket: any) => {
-    setTicketSeleccionado(ticket);
-    setDetalleResolucion('');
-  };
-
-  const confirmarResolucionTicket = async () => {
-    if (!detalleResolucion.trim()) return alert("Debes ingresar un detalle de resolución.");
-    setProcesandoTicket(true);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from('tickets_soporte').update({ estado: 'Resuelto' }).eq('id', ticketSeleccionado.id);
-
-      if (!error) {
-        setTickets(tickets.map(t => t.id === ticketSeleccionado.id ? { ...t, estado: 'Resuelto' } : t));
-        alert(`✅ Ticket marcado como resuelto.`);
-        setTicketSeleccionado(null);
-      }
-    } catch (err: any) {} finally { setProcesandoTicket(false); }
-  };
-
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -354,7 +359,7 @@ export default function AdminPanel() {
 
   if (!isMounted || validando) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
@@ -387,20 +392,20 @@ export default function AdminPanel() {
       <div className="flex flex-col md:flex-row h-screen">
 
         {/* SIDEBAR ADMINISTRADOR LOCAL */}
-        <aside className="w-full md:w-72 bg-gradient-to-b from-[#0B132B] via-[#1C2541] to-[#3A506B] text-white flex flex-col shadow-2xl relative z-20 shrink-0">
+        <aside className="w-full md:w-72 bg-gradient-to-b from-[#070b19] via-[#0f172a] to-[#1e293b] text-white flex flex-col shadow-2xl relative z-20 shrink-0 border-r border-white/5">
           <div className="p-8 border-b border-white/10">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/40">
-                <span className="text-xl font-black">⚙️</span>
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-2xl flex items-center justify-center shadow-xl shadow-blue-500/30">
+                <span className="text-xl font-black">⚡</span>
               </div>
               <div className="overflow-hidden">
-                <h1 className="font-black text-lg tracking-tight leading-tight truncate text-white">{editNombreSindicato || 'Sindicato'}</h1>
-                <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mt-0.5">Panel de Control Pro</p>
+                <h1 className="font-black text-base tracking-tight leading-tight truncate text-white">{editNombreSindicato || 'Sindicato'}</h1>
+                <p className="text-[9px] font-black text-blue-400 uppercase tracking-[0.2em] mt-1">Enterprise Admin</p>
               </div>
             </div>
           </div>
 
-          <nav className="flex-1 p-6 space-y-2.5 overflow-y-auto custom-scrollbar">
+          <nav className="flex-1 p-6 space-y-2 overflow-y-auto custom-scrollbar">
             <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
               <span className="text-base">📊</span> Resumen Operativo
             </button>
@@ -421,7 +426,7 @@ export default function AdminPanel() {
             </button>
           </nav>
 
-          <div className="p-6 border-t border-white/10 space-y-3 bg-black/10">
+          <div className="p-6 border-t border-white/10 space-y-3 bg-black/20">
             <Link href="/dashboard" className="w-full flex items-center justify-center gap-2 px-4 py-3.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all">
               ⇦ Portal Socios
             </Link>
@@ -496,7 +501,7 @@ export default function AdminPanel() {
               </div>
             )}
 
-            {/* TAB: HISTORIAL PRO DE ASAMBLEAS Y AUDITORÍA */}
+            {/* TAB: HISTORIAL PRO DE ASAMBLEAS Y AUDITORÍA EN TIEMPO REAL */}
             {activeTab === 'historial' && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
                 <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -524,7 +529,7 @@ export default function AdminPanel() {
                   </div>
                 </form>
 
-                {/* Listado de Asambleas con Auditoría Completa */}
+                {/* Listado de Asambleas con Auditoría Completa en Tiempo Real */}
                 <div className="space-y-6">
                   {historialAsambleas.length === 0 ? (
                     <div className="bg-white p-12 rounded-[2.5rem] text-center border border-slate-100 shadow-xl">
@@ -533,7 +538,10 @@ export default function AdminPanel() {
                     </div>
                   ) : (
                     historialAsambleas.map((asam) => {
-                      const asistentesEstaAsamblea = asistenciaRegistros.filter(a => a.asamblea_id === asam.id);
+                      const asistentesEstaAsamblea = asistenciaRegistros.filter(
+                        (a) => a.asamblea_titulo?.trim().toLowerCase() === asam.titulo?.trim().toLowerCase()
+                      );
+
                       const fechaCreacion = new Date(asam.created_at).toLocaleDateString('es-CL', {
                         day: '2-digit', month: '2-digit', year: 'numeric'
                       });
@@ -580,14 +588,14 @@ export default function AdminPanel() {
                             ) : (
                               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                                 {asistentesEstaAsamblea.map((asist) => {
-                                  const horaIngreso = new Date(asist.created_at).toLocaleTimeString('es-CL', {
+                                  const horaIngreso = new Date(asist.fecha_asistencia || asist.created_at).toLocaleTimeString('es-CL', {
                                     hour: '2-digit', minute: '2-digit'
                                   });
                                   return (
                                     <div key={asist.id} className="p-4 bg-slate-50/80 rounded-2xl border border-slate-100 flex flex-col justify-between space-y-2">
                                       <div>
                                         <span className="text-xs font-black text-slate-800 block truncate">{asist.profiles?.full_name || 'Socio'}</span>
-                                        <span className="text-[11px] text-slate-500 font-bold mt-0.5">{asist.profiles?.rut || 'Sin RUT'}</span>
+                                        <span className="text-[11px] text-slate-500 font-bold mt-0.5">{asist.usuario_rut || 'Sin RUT'}</span>
                                       </div>
                                       <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[10px]">
                                         <span className="text-slate-400 font-bold uppercase">Ingreso:</span>
@@ -786,7 +794,7 @@ export default function AdminPanel() {
                   </section>
 
                   <section className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/50">
-                    <h3 className="text-xl font-black text-slate-800 mb-6">🗳️️ Apertura de Votaciones</h3>
+                    <h3 className="text-xl font-black text-slate-800 mb-6">🗳️ Apertura de Votaciones</h3>
                     <form onSubmit={handleAbrirAsamblea} className="space-y-5">
                       <div>
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Materia a Votar</label>
@@ -805,7 +813,36 @@ export default function AdminPanel() {
         </main>
       </div>
 
-      {/* MODALES */}
+      {/* MODAL DE RESOLUCIÓN DE TICKETS */}
+      {ticketSeleccionado && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setTicketSeleccionado(null)}>
+          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-200 p-8 space-y-6" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+              <h3 className="text-xl font-black text-slate-800">Resolver Ticket</h3>
+              <button onClick={() => setTicketSeleccionado(null)} className="font-bold text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <div className="space-y-4">
+              <p className="text-xs font-bold text-slate-600 bg-slate-50 p-4 rounded-2xl border border-slate-100">{ticketSeleccionado.asunto}</p>
+              <textarea 
+                rows={4} 
+                value={detalleResolucion} 
+                onChange={e => setDetalleResolucion(e.target.value)} 
+                placeholder="Escribe el detalle de resolución..." 
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold outline-none focus:border-blue-500"
+              />
+              <button 
+                onClick={confirmarResolucionTicket} 
+                disabled={procesandoTicket} 
+                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl text-xs uppercase tracking-widest shadow-lg transition-all"
+              >
+                {procesandoTicket ? 'Procesando...' : 'Marcar como Resuelto ✓'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE EDICIÓN DE PERFIL */}
       {usuarioEnEdicion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setUsuarioEnEdicion(null)}>
           <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-200 p-8 space-y-6" onClick={e => e.stopPropagation()}>
