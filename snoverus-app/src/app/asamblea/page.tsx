@@ -5,13 +5,10 @@ import { createClient } from "../lib/supabase";
 
 export default function AsambleaPage() {
     const [enReunion, setEnReunion] = useState(false);
-    
-    // Estados para aislar la sala por Tenant (Sindicato)
     const [loading, setLoading] = useState(true);
     const [roomName, setRoomName] = useState("");
     const [userName, setUserName] = useState("Socio Sindicato");
     const [userEmail, setUserEmail] = useState("");
-    const [userRole, setUserRole] = useState("socio");
     const [nombreSindicato, setNombreSindicato] = useState("Organización");
 
     useEffect(() => {
@@ -20,7 +17,6 @@ export default function AsambleaPage() {
             const { data: { user } } = await supabase.auth.getUser();
 
             if (!user) return;
-            
             if (user.email) setUserEmail(user.email);
 
             const { data: profile } = await supabase
@@ -31,8 +27,6 @@ export default function AsambleaPage() {
             
             if (profile) {
                 if (profile.full_name) setUserName(profile.full_name);
-                setUserRole(profile.role);
-
                 if (profile.sindicato_id) {
                     const { data: sindicato } = await supabase
                         .from('sindicatos')
@@ -42,35 +36,34 @@ export default function AsambleaPage() {
                         
                     if (sindicato) {
                         setNombreSindicato(sindicato.nombre);
-                        // Nombre de sala limpio y seguro para el iframe web
-                        setRoomName(`SindicatoPYC_Asamblea_Tenant${profile.sindicato_id}_2026`);
+                        // Limpiamos el nombre de sala para que no tenga caracteres raros que confundan a Jitsi
+                        setRoomName(`SindicatoPYCAsambleaTenant${profile.sindicato_id}2026`);
                     }
                 } else if (profile.role === 'superadmin') {
-                    setRoomName('SindicatoPYC_SalaControl_Superadmin');
+                    setRoomName('SindicatoPYCControlSuperadmin');
                     setNombreSindicato('Panel Global Superadmin');
                 }
             } else {
-                setRoomName('SindicatoPYC_AsambleaGeneral');
+                setRoomName('SindicatoPYCAsambleaGeneral');
             }
             setLoading(false);
         }
         initSala();
     }, []);
 
-    // URL optimizada con parámetros estrictos para bloquear pantallas de marcación telefónica y apps en móviles
-    const safeRoom = roomName || 'SindicatoPYC_AsambleaGeneral';
-    const jitsiUrl = `https://meet.jit.si/${safeRoom}#userInfo.displayName="${encodeURIComponent(userName)}"&userInfo.email="${encodeURIComponent(userEmail || 'socio@sindicato.cl')}"&config.startWithAudioMuted=true&config.startWithVideoMuted=false&config.prejoinPageEnabled=false&config.hideConferenceSubject=true&config.disableInviteFunctions=true&config.brandingDataUrl=&interfaceConfig.MOBILE_APP_PROMO=false&interfaceConfig.HIDE_INVITE_MORE_HEADER=true`;
+    // URL ultra-limpia forzando la apertura directa en navegador sin pasarela de app
+    const safeRoom = roomName || 'SindicatoPYCAsambleaGeneral';
+    // Usamos el formato de API externa de Jitsi para saltar la pantalla de bienvenida y el prompt de la app móvil
+    const jitsiDirectUrl = `https://meet.jit.si/${safeRoom}#config.prejoinPageEnabled=false&config.startWithAudioMuted=true&config.startWithVideoMuted=false&userInfo.displayName="${encodeURIComponent(userName)}"`;
 
     return (
         <div className="min-h-screen bg-[#090d16] text-slate-100 font-sans p-4 sm:p-8 md:p-12 relative overflow-x-hidden selection:bg-blue-600 selection:text-white">
             
-            {/* Luces ambientales de fondo estilo SaaS */}
             <div className="absolute top-0 right-0 w-[800px] h-[800px] rounded-full blur-[180px] opacity-10 pointer-events-none -translate-y-1/3 translate-x-1/3 bg-blue-600"></div>
             <div className="absolute bottom-0 left-0 w-[600px] h-[600px] rounded-full blur-[180px] opacity-10 pointer-events-none translate-y-1/3 -translate-x-1/4 bg-blue-500"></div>
 
             <div className="max-w-6xl mx-auto space-y-8 relative z-10">
                 
-                {/* Header de la vista */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-6">
                     <div>
                         <span className="px-3 py-1 mb-2 inline-block text-[10px] font-black uppercase tracking-[0.2em] rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
@@ -85,7 +78,6 @@ export default function AsambleaPage() {
                     </Link>
                 </div>
                 
-                {/* Contenedor principal de la tarjeta */}
                 <div className="bg-white/[0.03] backdrop-blur-2xl rounded-[2.5rem] shadow-2xl p-6 sm:p-10 border border-white/10 relative">
                     {loading ? (
                         <div className="text-center py-24 text-slate-400 font-medium">
@@ -114,24 +106,24 @@ export default function AsambleaPage() {
                     ) : (
                         <div className="animate-in fade-in zoom-in-95 duration-500 space-y-6">
                             
-                            {/* Botón de respaldo directo para celulares si el navegador bloquea el iframe */}
+                            {/* Barra de acción directa optimizada para saltar bloqueos en móviles */}
                             <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
                                 <p className="text-xs text-blue-300 font-medium text-center sm:text-left">
-                                    💡 Si tu teléfono muestra pantallas de marcación o apps, abre la sala directamente aquí:
+                                    📱 Si tu dispositivo móvil muestra opciones de descarga, toca el botón para abrir la sala limpia en una pestaña nueva:
                                 </p>
                                 <a 
-                                    href={jitsiUrl} 
+                                    href={jitsiDirectUrl} 
                                     target="_blank" 
                                     rel="noopener noreferrer"
-                                    className="shrink-0 px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-md transition-all text-center"
+                                    className="shrink-0 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-md transition-all text-center"
                                 >
-                                    🔗 Abrir Sala en Pantalla Completa
+                                    🚀 Abrir Videollamada Limpia
                                 </a>
                             </div>
 
                             <div className="w-full h-[650px] rounded-[2rem] overflow-hidden border border-white/10 bg-black relative shadow-2xl">
                                 <iframe
-                                    src={jitsiUrl}
+                                    src={jitsiDirectUrl}
                                     allow="camera; microphone; fullscreen; display-capture; autoplay"
                                     style={{
                                         position: 'absolute',
