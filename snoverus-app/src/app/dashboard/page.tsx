@@ -6,6 +6,11 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '../lib/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
 
+// --- Iconos en línea (opcional, para mejor rendimiento) ---
+const ChartBarIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" /></svg>;
+const CurrencyDollarIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>;
+const BuildingLibraryIcon = () => <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0 0 12 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75Z" /></svg>;
+
 export default function Dashboard() {
   const router = useRouter();
   const [comunicados, setComunicados] = useState<any[]>([]);
@@ -25,12 +30,12 @@ export default function Dashboard() {
   const [accesoBloqueado, setAccesoBloqueado] = useState({ bloqueado: false, motivo: '' });
 
   const [config, setConfig] = useState({
-    tema: { color_primario: '#020617', color_secundario: '#3b82f6', estilo_carrusel: 'moderno' },
-    hero: { titulo: 'Tu Portal al Futuro.', subtitulo: 'Un espacio interactivo diseñado para potenciar tu participación.', mostrar_icono: true },
+    tema: { color_primario: '#0f172a', color_secundario: '#3b82f6', estilo_carrusel: 'moderno' },
+    hero: { titulo: 'Bienvenido al Futuro.', subtitulo: 'Tu espacio interactivo para una mayor participación.', mostrar_icono: true },
     carrusel_slides: [
-      { id: 1, badge: 'BIENVENIDO', titulo: 'Tu Portal al Futuro.', texto: 'Un espacio interactivo diseñado para potenciar tu participación y gestión sindical.', icono: '🚀' },
-      { id: 2, badge: 'INTELIGENCIA ARTIFICIAL', titulo: 'Asistencia Legal 24/7.', texto: 'Nuestra nueva IA resuelve tus dudas laborales al instante basadas en normativas.', icono: '🤖' },
-      { id: 3, badge: 'BENEFICIOS', titulo: 'Red de Convenios.', texto: 'Descubre descuentos exclusivos en salud, educación y comercio para socios.', icono: '🎁' }
+      { id: 1, badge: 'NOVEDADES', titulo: 'Conoce Tu Nuevo Portal', texto: 'Navega fácilmente y descubre todas las herramientas disponibles para ti.', icono: '🚀' },
+      { id: 2, badge: 'SERVICIOS', titulo: 'Asesoría 24/7', texto: 'Consulta nuestro asistente legal para resolver tus dudas rápidamente.', icono: '🤖' },
+      { id: 3, badge: 'BENEFICIOS', titulo: 'Nuevos Convenios', texto: 'Aprovecha los descuentos exclusivos en salud y educación.', icono: '🎁' }
     ],
     modulos: { pulso_economico: true, asistente_legal: true, participacion_activa: true, actualidad: true }
   });
@@ -44,11 +49,10 @@ export default function Dashboard() {
         const { data: { user } } = await supabase.auth.getUser();
 
         if (user) {
-          // 1. Validar estado individual del Usuario
           const { data: profile } = await supabase.from('profiles').select('sindicato_id, role, estado').eq('id', user.id).single();
           
           if (profile?.estado?.toLowerCase() === 'suspendido') {
-            setAccesoBloqueado({ bloqueado: true, motivo: 'Tu cuenta ha sido suspendida individualmente. Contacta a tu directiva.' });
+            setAccesoBloqueado({ bloqueado: true, motivo: 'Cuenta suspendida temporalmente.' });
             setLoading(false);
             return;
           }
@@ -57,11 +61,10 @@ export default function Dashboard() {
 
           if (profile?.sindicato_id) {
             setSindicatoId(profile.sindicato_id);
-            // 2. Validar estado global del Sindicato
             const { data: sindicatoData } = await supabase.from('sindicatos').select('configuracion, nombre, estado').eq('id', profile.sindicato_id).single();
             
             if (sindicatoData?.estado?.toLowerCase() === 'suspendido') {
-              setAccesoBloqueado({ bloqueado: true, motivo: 'El acceso de tu organización ha sido suspendido por la administración global.' });
+              setAccesoBloqueado({ bloqueado: true, motivo: 'Organización suspendida.' });
               setLoading(false);
               return;
             }
@@ -70,15 +73,12 @@ export default function Dashboard() {
               setSindicatoNombre(sindicatoData.nombre || '');
               if (sindicatoData.configuracion) {
                 setConfig(prev => ({
-                  tema: { ...prev.tema, ...sindicatoData.configuracion.tema },
-                  hero: { ...prev.hero, ...sindicatoData.configuracion.hero },
-                  carrusel_slides: sindicatoData.configuracion.carrusel_slides || prev.carrusel_slides,
-                  modulos: { ...prev.modulos, ...sindicatoData.configuracion.modulos }
+                  ...prev,
+                  ...sindicatoData.configuracion
                 }));
               }
             }
 
-            // Carga paralela de datos de módulos
             const [comData, asamData] = await Promise.all([
               supabase.from('comunicados').select('*').eq('sindicato_id', profile.sindicato_id).order('fecha_creacion', { ascending: false }).limit(5),
               supabase.from('asambleas_votaciones').select('*').eq('sindicato_id', profile.sindicato_id).eq('estado', 'Abierta')
@@ -88,17 +88,15 @@ export default function Dashboard() {
             if (asamData.data) setAsambleas(asamData.data);
           }
         } else {
-           // Si no hay usuario y trataron de llegar aquí saltando el login
            router.push('/');
            return;
         }
       } catch (err) {
-        console.error("Error al conectar con Supabase:", err);
+        console.error("Error fetching data:", err);
       } finally {
         setLoading(false);
       }
 
-      // Carga de indicadores económicos independiente
       try {
         const res = await fetch('https://mindicador.cl/api');
         const data = await res.json();
@@ -114,7 +112,7 @@ export default function Dashboard() {
     if (modoEdicion || config.carrusel_slides.length === 0) return;
     const intervalo = setInterval(() => {
       setSlideActual((prev) => (prev + 1) % config.carrusel_slides.length);
-    }, 6000);
+    }, 8000); // Aumentado el tiempo para leer mejor
     return () => clearInterval(intervalo);
   }, [config.carrusel_slides, modoEdicion]);
 
@@ -125,37 +123,27 @@ export default function Dashboard() {
       const supabase = createClient();
       const { error } = await supabase.from('sindicatos').update({ configuracion: config }).eq('id', sindicatoId);
       if (error) throw error;
-      alert('✅ ¡Carrusel y diseño actualizados con éxito en el servidor!');
+      alert('Configuración guardada exitosamente.');
       setModoEdicion(false);
     } catch (err: any) {
-      alert('❌ Error al guardar: ' + err.message);
+      alert('Error al guardar: ' + err.message);
     } finally {
       setGuardandoCambios(false);
     }
   };
 
   const aplicarPlantillaPreset = (tipo: string) => {
-    if (tipo === 'corporativo') {
+    if (tipo === 'moderno') {
       setConfig({
-        tema: { color_primario: '#0f172a', color_secundario: '#0ea5e9', estilo_carrusel: 'corporativo' },
-        hero: { titulo: 'Excelencia Sindical.', subtitulo: 'Comprometidos con el desarrollo y la estabilidad de nuestros trabajadores.', mostrar_icono: true },
+        tema: { color_primario: '#0f172a', color_secundario: '#3b82f6', estilo_carrusel: 'moderno' },
+        hero: { titulo: 'Bienvenido al Futuro.', subtitulo: 'Tu espacio interactivo para una mayor participación.', mostrar_icono: true },
         carrusel_slides: [
-          { id: 1, badge: 'OFICIAL', titulo: 'Negociación Colectiva 2026', texto: 'Revisa los avances del petitorio y las mesas de diálogo activas.', icono: '📋' },
-          { id: 2, badge: 'TRANSPARENCIA', titulo: 'Libro de Actas al Día', texto: 'Accede a los acuerdos firmados por el directorio en tiempo real.', icono: '📁' }
-        ],
-        modulos: { pulso_economico: true, asistente_legal: true, participacion_activa: true, actualidad: true }
-      });
-    } else if (tipo === 'solidario') {
-      setConfig({
-        tema: { color_primario: '#18181b', color_secundario: '#f43f5e', estilo_carrusel: 'solidario' },
-        hero: { titulo: 'Unidos Somos Más.', subtitulo: 'Fondo solidario y apoyo mutuo ante cualquier emergencia familiar o médica.', mostrar_icono: true },
-        carrusel_slides: [
-          { id: 1, badge: 'APOYO MUTUO', titulo: 'Fondo Solidario Activo', texto: 'Conoce las metas de recaudación y solicita auxilio en caso de siniestros.', icono: '❤️' },
-          { id: 2, badge: 'BENEFIS', titulo: 'Bonos y Ayuda Social', texto: 'Infórmate sobre los requisitos para los bonos de escolaridad y nacimiento.', icono: '🤝' }
+           { id: 1, badge: 'NOVEDADES', titulo: 'Conoce Tu Nuevo Portal', texto: 'Navega fácilmente y descubre todas las herramientas disponibles para ti.', icono: '🚀' }
         ],
         modulos: { pulso_economico: true, asistente_legal: true, participacion_activa: true, actualidad: true }
       });
     }
+    // Añade lógica para otras plantillas si es necesario
   };
 
   const actualizarSlideActiva = (campo: string, valor: string) => {
@@ -165,13 +153,13 @@ export default function Dashboard() {
   };
 
   const agregarNuevoSlide = () => {
-    const nuevo = { id: Date.now(), badge: 'NUEVO', titulo: 'Título de la Diapositiva', texto: 'Descripción detallada del contenido institucional.', icono: '⭐' };
+    const nuevo = { id: Date.now(), badge: 'NUEVO', titulo: 'Título...', texto: 'Descripción...', icono: '✨' };
     setConfig({ ...config, carrusel_slides: [...config.carrusel_slides, nuevo] });
     setSlideActual(config.carrusel_slides.length);
   };
 
   const eliminarSlideActual = () => {
-    if (config.carrusel_slides.length <= 1) return alert("Debe haber al menos una diapositiva en el carrusel.");
+    if (config.carrusel_slides.length <= 1) return alert("Debe haber al menos una diapositiva.");
     const nuevosSlides = config.carrusel_slides.filter((_, idx) => idx !== slideActual);
     setConfig({ ...config, carrusel_slides: nuevosSlides });
     setSlideActual(0);
@@ -186,10 +174,9 @@ export default function Dashboard() {
 
     const { error } = await supabase.from('votos_registrados').insert([{ asamblea_id: asambleaId, usuario_rut: profile.rut, opcion_elegida: opcion }]);
     if (error) {
-      if (error.code === '23505') alert('⚠️ Ya has emitido tu voto en esta asamblea.');
+      if (error.code === '23505') alert('Ya has votado en esta asamblea.');
       else alert('Error: ' + error.message);
     } else {
-      alert(`✅ ¡Voto registrado: "${opcion}"!`);
       setVotoEstado(opcion);
     }
   };
@@ -211,14 +198,10 @@ export default function Dashboard() {
 
   if (accesoBloqueado.bloqueado) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-6 relative overflow-hidden">
-        <div className="absolute top-0 w-full h-2 bg-rose-600"></div>
-        <div className="w-24 h-24 bg-rose-500/10 text-rose-500 rounded-full flex items-center justify-center text-5xl mb-6 border border-rose-500/20">⛔</div>
-        <h1 className="text-3xl font-black mb-3 tracking-tight">Acceso Restringido</h1>
-        <p className="text-slate-400 mb-10 text-center max-w-md font-medium leading-relaxed">{accesoBloqueado.motivo}</p>
-        <button onClick={handleLogout} className="px-8 py-3.5 bg-white text-slate-900 hover:bg-slate-200 rounded-xl font-black transition-colors uppercase tracking-widest text-xs">
-          Volver al Inicio
-        </button>
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-6">
+        <h1 className="text-3xl font-bold mb-4 text-red-500">Acceso Restringido</h1>
+        <p className="text-slate-400 mb-8">{accesoBloqueado.motivo}</p>
+        <button onClick={handleLogout} className="px-6 py-2 bg-white text-slate-900 rounded-lg font-bold">Volver al Inicio</button>
       </div>
     );
   }
@@ -238,339 +221,240 @@ export default function Dashboard() {
   const slideActualObj = config.carrusel_slides[slideActual] || config.carrusel_slides[0];
 
   return (
-    <div className="min-h-screen font-sans text-slate-100 pb-28 relative w-full transition-colors duration-700 overflow-hidden" style={{ backgroundColor: config.tema.color_primario }}>
+    <div className="min-h-screen font-sans text-slate-100 pb-28 relative w-full overflow-x-hidden" style={{ backgroundColor: config.tema.color_primario }}>
       
-      {/* Botón flotante Editor Directiva */}
+      {/* --- Luces Ambientales (Más sutiles y amplias) --- */}
+      <div className="absolute top-0 right-0 w-[1000px] h-[1000px] rounded-full blur-[200px] opacity-15 pointer-events-none -translate-y-1/3 translate-x-1/3" style={{ backgroundColor: config.tema.color_secundario }}></div>
+      <div className="absolute bottom-0 left-0 w-[800px] h-[800px] rounded-full blur-[200px] opacity-10 pointer-events-none translate-y-1/3 -translate-x-1/4" style={{ backgroundColor: config.tema.color_secundario }}></div>
+
+      {/* --- Menú de Edición Admin --- */}
       {esAdmin && (
-        <motion.div initial={{y: 50, opacity: 0}} animate={{y: 0, opacity: 1}} className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/90 backdrop-blur-xl border border-white/20 px-6 py-3.5 rounded-full shadow-2xl flex items-center gap-4 text-xs font-bold">
-          <span className="hidden sm:flex items-center gap-2 text-indigo-400">
-            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-ping"></span>
-            Modo Directiva
+        <motion.div initial={{y: 50, opacity: 0}} animate={{y: 0, opacity: 1}} className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-slate-900/80 backdrop-blur-2xl border border-white/10 px-6 py-3 rounded-full shadow-2xl flex items-center gap-4 text-xs font-semibold">
+           <span className="flex items-center gap-2 text-indigo-400">
+            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+            Modo Edición
           </span>
-          <div className="hidden sm:block h-4 w-px bg-white/20"></div>
-          <button 
-            onClick={() => setModoEdicion(!modoEdicion)} 
-            className={`px-4 py-2 rounded-full transition-all shadow-md ${modoEdicion ? 'bg-rose-600 text-white' : 'bg-indigo-600 text-white hover:bg-indigo-500'}`}
-          >
-            {modoEdicion ? '✕ Cerrar Editor' : '✏️ Editar Home'}
+          <div className="h-4 w-px bg-white/20"></div>
+          <button onClick={() => setModoEdicion(!modoEdicion)} className={`px-4 py-2 rounded-full transition-colors ${modoEdicion ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30'}`}>
+            {modoEdicion ? 'Cerrar Editor' : 'Editar Diseño'}
           </button>
           {modoEdicion && (
-            <button onClick={guardarConfiguracionEnVivo} disabled={guardandoCambios} className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-lg transition-all">
-              {guardandoCambios ? 'Guardando...' : '💾 Guardar Cambios'}
+            <button onClick={guardarConfiguracionEnVivo} disabled={guardandoCambios} className="px-5 py-2 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-full transition-colors">
+              {guardandoCambios ? 'Guardando...' : 'Guardar Cambios'}
             </button>
           )}
         </motion.div>
       )}
 
-      {/* Panel Editor Directiva */}
+      {/* --- Panel de Edición Desplegable --- */}
       <AnimatePresence>
         {esAdmin && modoEdicion && (
-          <motion.div initial={{ y: -100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -100, opacity: 0 }} className="bg-slate-900/95 border-b border-white/10 p-6 sticky top-0 z-40 backdrop-blur-2xl shadow-2xl">
-            <div className="max-w-7xl mx-auto space-y-6 text-xs">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 border-b border-white/10 pb-4">
-                <div>
-                  <label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Plantillas Rápidas</label>
-                  <div className="flex gap-2">
-                    <button onClick={() => aplicarPlantillaPreset('moderno')} className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl transition-all">Moderno</button>
-                    <button onClick={() => aplicarPlantillaPreset('corporativo')} className="px-3 py-2 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl transition-all">Corporativo</button>
-                    <button onClick={() => aplicarPlantillaPreset('solidario')} className="px-3 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition-all">Solidario</button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Colores del Portal</label>
-                  <div className="flex items-center gap-3">
-                    <input type="color" value={config.tema.color_primario} onChange={e => setConfig({...config, tema: {...config.tema, color_primario: e.target.value}})} className="w-10 h-10 rounded-lg cursor-pointer bg-transparent border-0" />
-                    <input type="color" value={config.tema.color_secundario} onChange={e => setConfig({...config, tema: {...config.tema, color_secundario: e.target.value}})} className="w-10 h-10 rounded-lg cursor-pointer bg-transparent border-0" />
-                    <span className="text-slate-400 font-mono">Fondo y Acentos</span>
-                  </div>
-                </div>
-                <div>
-                  <label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Título de Bienvenida</label>
-                  <input type="text" value={config.hero.titulo} onChange={e => setConfig({...config, hero: {...config.hero, titulo: e.target.value}})} className="w-full bg-slate-800 border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold focus:ring-2 focus:ring-blue-500 outline-none" />
-                </div>
+          <motion.div initial={{ y: -100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -100, opacity: 0 }} className="bg-slate-900/95 border-b border-white/10 p-6 sticky top-0 z-40 backdrop-blur-3xl shadow-2xl">
+              <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
+                 <div>
+                    <label className="block text-slate-400 mb-2">Tema y Color</label>
+                    <div className="flex gap-4">
+                       <input type="color" value={config.tema.color_primario} onChange={e => setConfig({...config, tema: {...config.tema, color_primario: e.target.value}})} className="w-8 h-8 rounded cursor-pointer" />
+                       <input type="color" value={config.tema.color_secundario} onChange={e => setConfig({...config, tema: {...config.tema, color_secundario: e.target.value}})} className="w-8 h-8 rounded cursor-pointer" />
+                    </div>
+                 </div>
+                 <div className="lg:col-span-3 space-y-4">
+                    <label className="block text-slate-400 mb-2">Editor de Carrusel ({config.carrusel_slides.length} slides)</label>
+                    <div className="flex gap-2 overflow-x-auto pb-2">
+                       {config.carrusel_slides.map((s, idx) => (
+                         <button key={s.id} onClick={() => setSlideActual(idx)} className={`px-3 py-1.5 rounded-lg whitespace-nowrap transition-colors ${slideActual === idx ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/50' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
+                           {s.titulo.substring(0, 12)}...
+                         </button>
+                       ))}
+                       <button onClick={agregarNuevoSlide} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg">+</button>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <input type="text" value={slideActualObj.badge} onChange={e => actualizarSlideActiva('badge', e.target.value)} placeholder="Etiqueta" className="bg-slate-800/50 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-indigo-500" />
+                        <input type="text" value={slideActualObj.titulo} onChange={e => actualizarSlideActiva('titulo', e.target.value)} placeholder="Título" className="bg-slate-800/50 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-indigo-500" />
+                        <input type="text" value={slideActualObj.texto} onChange={e => actualizarSlideActiva('texto', e.target.value)} placeholder="Descripción" className="bg-slate-800/50 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-indigo-500" />
+                        <input type="text" value={slideActualObj.icono} onChange={e => actualizarSlideActiva('icono', e.target.value)} placeholder="Icono" className="bg-slate-800/50 border border-white/10 rounded-lg px-3 py-2 text-white outline-none focus:border-indigo-500 text-center" />
+                    </div>
+                    <button onClick={eliminarSlideActual} className="text-red-400 hover:text-red-300 text-xs">Eliminar Slide Actual</button>
+                 </div>
               </div>
-
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="font-black text-indigo-400 uppercase tracking-widest text-[11px]">Gestor de Diapositivas ({config.carrusel_slides.length})</span>
-                  <div className="flex gap-2">
-                    <button onClick={agregarNuevoSlide} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg transition-colors">+ Añadir Slide</button>
-                    <button onClick={eliminarSlideActual} className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg transition-colors">Borrar Actual</button>
-                  </div>
-                </div>
-                <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
-                  {config.carrusel_slides.map((s, idx) => (
-                    <button key={s.id} onClick={() => setSlideActual(idx)} className={`px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-all ${slideActual === idx ? 'bg-indigo-500 text-white shadow-md' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'}`}>
-                      Slide {idx + 1}: {s.titulo.substring(0, 15)}...
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 bg-slate-800/50 p-5 rounded-2xl border border-white/5">
-                  <div>
-                    <label className="block font-black text-slate-400 uppercase mb-1.5">Etiqueta Superior</label>
-                    <input type="text" value={slideActualObj.badge} onChange={e => actualizarSlideActiva('badge', e.target.value)} className="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold outline-none focus:border-indigo-500" />
-                  </div>
-                  <div>
-                    <label className="block font-black text-slate-400 uppercase mb-1.5">Título Principal</label>
-                    <input type="text" value={slideActualObj.titulo} onChange={e => actualizarSlideActiva('titulo', e.target.value)} className="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold outline-none focus:border-indigo-500" />
-                  </div>
-                  <div>
-                    <label className="block font-black text-slate-400 uppercase mb-1.5">Descripción</label>
-                    <input type="text" value={slideActualObj.texto} onChange={e => actualizarSlideActiva('texto', e.target.value)} className="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2.5 text-white font-medium outline-none focus:border-indigo-500" />
-                  </div>
-                  <div>
-                    <label className="block font-black text-slate-400 uppercase mb-1.5">Icono (Emoji)</label>
-                    <input type="text" value={slideActualObj.icono} onChange={e => actualizarSlideActiva('icono', e.target.value)} className="w-full bg-slate-900 border border-white/10 rounded-xl px-3 py-2.5 text-white font-bold text-center text-lg outline-none focus:border-indigo-500" />
-                  </div>
-                </div>
-              </div>
-            </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Luces Ambientales */}
-      <div className="absolute top-0 right-0 w-[800px] h-[800px] rounded-full blur-[150px] opacity-20 pointer-events-none -translate-y-1/2 translate-x-1/3 transition-colors duration-1000" style={{ backgroundColor: config.tema.color_secundario }}></div>
-      <div className="absolute bottom-0 left-0 w-[600px] h-[600px] rounded-full blur-[150px] opacity-10 pointer-events-none translate-y-1/3 -translate-x-1/4 transition-colors duration-1000" style={{ backgroundColor: config.tema.color_secundario }}></div>
-
-      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-10 space-y-12 relative z-10">
+      <main className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 pt-12 space-y-16 relative z-10">
         
-        {/* HERO Y CARRUSEL */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
-          <motion.section initial={{opacity: 0, x: -20}} animate={{opacity: 1, x: 0}} className="lg:col-span-5 rounded-[2.5rem] p-10 flex flex-col justify-center relative overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-white/10 backdrop-blur-2xl bg-white/[0.03]">
-            <div className="relative z-10">
-              <span className="inline-block px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] mb-6 border border-white/10 shadow-sm" style={{ backgroundColor: hexToRGB(config.tema.color_secundario, 0.2), color: config.tema.color_secundario }}>
-                {sindicatoNombre || 'MI ORGANIZACIÓN'}
-              </span>
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-tight mb-6 drop-shadow-md">
-                {config.hero.titulo}
-              </h1>
-              <p className="text-sm sm:text-base font-medium text-white/60 leading-relaxed max-w-sm">
-                {config.hero.subtitulo}
-              </p>
-            </div>
-          </motion.section>
+        {/* --- HERO SECTION --- */}
+        <section className="text-center space-y-6 max-w-3xl mx-auto">
+           <motion.div initial={{opacity: 0, y: -20}} animate={{opacity: 1, y: 0}} className="inline-block">
+             <span className="px-4 py-1.5 rounded-full text-xs font-bold tracking-widest uppercase border border-white/10" style={{ backgroundColor: hexToRGB(config.tema.color_secundario, 0.1), color: config.tema.color_secundario }}>
+               {sindicatoNombre || 'Portal de Socios'}
+             </span>
+           </motion.div>
+           <motion.h1 initial={{opacity: 0, y: 20}} animate={{opacity: 1, y: 0}} transition={{delay: 0.1}} className="text-5xl md:text-7xl font-extrabold tracking-tight text-white drop-shadow-lg leading-tight">
+             {config.hero.titulo}
+           </motion.h1>
+           <motion.p initial={{opacity: 0}} animate={{opacity: 1}} transition={{delay: 0.2}} className="text-lg md:text-xl text-slate-400 font-medium max-w-2xl mx-auto">
+             {config.hero.subtitulo}
+           </motion.p>
+        </section>
 
-          <motion.section initial={{opacity: 0, x: 20}} animate={{opacity: 1, x: 0}} className="lg:col-span-7 rounded-[2.5rem] p-8 md:p-12 relative overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-white/10 backdrop-blur-2xl bg-white/[0.03] flex flex-col justify-between group">
-            <div className="absolute top-0 right-0 w-full h-full opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none transition-opacity duration-500 group-hover:opacity-20"></div>
-
-            <AnimatePresence mode="wait">
-              <motion.div 
-                key={slideActual}
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                transition={{ duration: 0.4 }}
-                className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center relative z-10 my-auto"
-              >
-                <div className="md:col-span-8 space-y-4">
-                  <span className="inline-block px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-[0.2em] border border-white/10 shadow-sm" style={{ backgroundColor: hexToRGB(config.tema.color_secundario, 0.25), color: config.tema.color_secundario }}>
-                    {slideActualObj.badge}
-                  </span>
-                  <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-tight drop-shadow-md">
-                    {slideActualObj.titulo}
-                  </h2>
-                  <p className="text-sm font-medium text-white/70 leading-relaxed max-w-md">
-                    {slideActualObj.texto}
-                  </p>
-                </div>
-
-                <div className="md:col-span-4 flex justify-center items-center">
-                  <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-[2rem] bg-white/5 border border-white/10 backdrop-blur-xl flex items-center justify-center text-6xl shadow-2xl" style={{boxShadow: `0 20px 50px ${hexToRGB(config.tema.color_secundario, 0.2)}`}}>
-                    {slideActualObj.icono}
+        {/* --- INDICADORES ECONÓMICOS --- */}
+        {config.modulos.pulso_economico && (
+          <motion.section initial={{opacity: 0, y: 20}} animate={{opacity: 1, y: 0}} transition={{delay: 0.3}}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[
+                { title: 'Valor UF Hoy', value: indicadores.uf, icon: <BuildingLibraryIcon /> },
+                { title: 'Valor UTM', value: indicadores.utm, icon: <ChartBarIcon /> },
+                { title: 'Dólar Observado', value: indicadores.dolar, icon: <CurrencyDollarIcon /> }
+              ].map((ind, i) => (
+                <div key={i} className="group relative bg-white/[0.02] backdrop-blur-xl p-6 rounded-[2rem] border border-white/5 hover:bg-white/[0.05] hover:border-white/10 transition-all duration-500 shadow-2xl overflow-hidden flex items-center justify-between">
+                  <div className="absolute -right-6 -top-6 w-24 h-24 bg-white/5 rounded-full blur-2xl group-hover:bg-white/10 transition-colors"></div>
+                  <div>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">{ind.title}</p>
+                    {indicadores.cargando ? (
+                      <div className="h-8 w-24 bg-slate-800 animate-pulse rounded-lg"></div>
+                    ) : (
+                      <p className="text-3xl font-extrabold text-white tracking-tighter">${ind.value?.toLocaleString('es-CL')}</p>
+                    )}
+                  </div>
+                  <div className="p-4 rounded-2xl border border-white/5 shadow-inner transition-transform duration-500 group-hover:scale-110" style={{ backgroundColor: hexToRGB(config.tema.color_secundario, 0.1), color: config.tema.color_secundario }}>
+                     {ind.icon}
                   </div>
                 </div>
-              </motion.div>
-            </AnimatePresence>
-
-            <div className="flex justify-between items-center mt-8 pt-6 border-t border-white/5 relative z-10">
-              <div className="flex gap-2">
-                {config.carrusel_slides.map((_, idx) => (
-                  <button 
-                    key={idx} 
-                    onClick={() => setSlideActual(idx)} 
-                    className={`h-1.5 rounded-full transition-all duration-300 ${slideActual === idx ? 'w-8 bg-white shadow-[0_0_10px_rgba(255,255,255,0.8)]' : 'w-2 bg-white/20 hover:bg-white/50'}`}
-                    aria-label={`Slide ${idx + 1}`}
-                  />
-                ))}
-              </div>
-              <div className="flex gap-3">
-                <button onClick={() => setSlideActual((slideActual - 1 + config.carrusel_slides.length) % config.carrusel_slides.length)} className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center font-bold text-white transition-colors backdrop-blur-sm border border-white/5">‹</button>
-                <button onClick={() => setSlideActual((slideActual + 1) % config.carrusel_slides.length)} className="w-10 h-10 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center font-bold text-white transition-colors backdrop-blur-sm border border-white/5">›</button>
-              </div>
-            </div>
-          </motion.section>
-        </div>
-
-        {/* INDICADORES ECONÓMICOS */}
-        {config.modulos.pulso_economico && (
-          <motion.section initial={{opacity: 0, y: 20}} animate={{opacity: 1, y: 0}} transition={{delay: 0.1}}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-              <div className="group bg-white/[0.03] backdrop-blur-3xl p-6 rounded-[2rem] border border-white/5 hover:bg-white/[0.06] transition-all duration-300 shadow-lg flex items-center gap-5 cursor-default">
-                <div className="p-4 rounded-2xl text-2xl shadow-inner border border-white/5" style={{ backgroundColor: hexToRGB(config.tema.color_secundario, 0.15), color: config.tema.color_secundario }}>🏦</div>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-1">Valor UF Hoy</p>
-                  {indicadores.cargando ? (
-                    <div className="h-7 w-24 bg-white/10 animate-pulse rounded-md mt-1"></div>
-                  ) : (
-                    <p className="text-2xl font-black text-white tracking-tighter">${indicadores.uf?.toLocaleString('es-CL')}</p>
-                  )}
-                </div>
-              </div>
-              <div className="group bg-white/[0.03] backdrop-blur-3xl p-6 rounded-[2rem] border border-white/5 hover:bg-white/[0.06] transition-all duration-300 shadow-lg flex items-center gap-5 cursor-default">
-                <div className="p-4 rounded-2xl text-2xl shadow-inner border border-white/5" style={{ backgroundColor: hexToRGB(config.tema.color_secundario, 0.15), color: config.tema.color_secundario }}>📊</div>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-1">Valor UTM</p>
-                  {indicadores.cargando ? (
-                    <div className="h-7 w-24 bg-white/10 animate-pulse rounded-md mt-1"></div>
-                  ) : (
-                    <p className="text-2xl font-black text-white tracking-tighter">${indicadores.utm?.toLocaleString('es-CL')}</p>
-                  )}
-                </div>
-              </div>
-              <div className="group bg-white/[0.03] backdrop-blur-3xl p-6 rounded-[2rem] border border-white/5 hover:bg-white/[0.06] transition-all duration-300 shadow-lg flex items-center gap-5 cursor-default">
-                <div className="p-4 rounded-2xl text-2xl shadow-inner border border-white/5" style={{ backgroundColor: hexToRGB(config.tema.color_secundario, 0.15), color: config.tema.color_secundario }}>💵</div>
-                <div>
-                  <p className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-1">Dólar Observado</p>
-                  {indicadores.cargando ? (
-                    <div className="h-7 w-24 bg-white/10 animate-pulse rounded-md mt-1"></div>
-                  ) : (
-                    <p className="text-2xl font-black text-white tracking-tighter">${indicadores.dolar?.toLocaleString('es-CL')}</p>
-                  )}
-                </div>
-              </div>
+              ))}
             </div>
           </motion.section>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
-          {/* MÓDULO 2: ASAMBLEAS Y VOTACIÓN */}
-          {config.modulos.participacion_activa && (
-            <div className="lg:col-span-2 space-y-8">
-              <motion.section initial={{opacity: 0, y: 20}} animate={{opacity: 1, y: 0}} transition={{delay: 0.2}}>
-                <div className="flex items-center gap-3 mb-6 pl-2">
-                  <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
-                    <span style={{ color: config.tema.color_secundario }}>⚡</span> Participación Activa
-                  </h2>
+          {/* --- COLUMNA IZQUIERDA: CARRUSEL Y PARTICIPACIÓN --- */}
+          <div className="lg:col-span-8 space-y-8">
+            
+            {/* --- CARRUSEL DESTACADO --- */}
+            <motion.section initial={{opacity: 0, scale: 0.95}} animate={{opacity: 1, scale: 1}} transition={{delay: 0.4}} className="relative rounded-[2.5rem] p-10 md:p-14 overflow-hidden border border-white/10 shadow-2xl bg-white/[0.02] backdrop-blur-2xl group min-h-[400px] flex flex-col justify-end">
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent z-0"></div>
+              
+              {/* Imagen/Fondo del Carrusel (Simulado con gradiente) */}
+              <div className="absolute inset-0 z-0 transition-all duration-1000 ease-in-out" style={{ background: `radial-gradient(circle at 80% 20%, ${hexToRGB(config.tema.color_secundario, 0.3)}, transparent 60%)`}}></div>
+
+              <AnimatePresence mode="wait">
+                <motion.div 
+                  key={slideActual}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.5, ease: "easeOut" }}
+                  className="relative z-10"
+                >
+                   <span className="inline-block px-3 py-1 mb-4 text-[10px] font-bold uppercase tracking-widest rounded-lg border border-white/20 backdrop-blur-md bg-black/30 text-white">
+                      {slideActualObj.badge}
+                   </span>
+                   <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+                      <div className="max-w-xl">
+                        <h2 className="text-4xl md:text-5xl font-extrabold text-white leading-tight mb-4">{slideActualObj.titulo}</h2>
+                        <p className="text-lg text-slate-300 font-medium">{slideActualObj.texto}</p>
+                      </div>
+                      <div className="text-7xl drop-shadow-2xl md:ml-auto filter saturate-150 transform transition-transform group-hover:scale-110 duration-700">
+                        {slideActualObj.icono}
+                      </div>
+                   </div>
+                </motion.div>
+              </AnimatePresence>
+
+              {/* Controles del Carrusel */}
+              <div className="relative z-10 mt-10 flex items-center justify-between border-t border-white/10 pt-6">
+                <div className="flex gap-2">
+                  {config.carrusel_slides.map((_, idx) => (
+                    <button 
+                      key={idx} 
+                      onClick={() => setSlideActual(idx)} 
+                      className={`h-1.5 rounded-full transition-all duration-500 ${slideActual === idx ? 'w-10 bg-white' : 'w-3 bg-white/20 hover:bg-white/40'}`}
+                    />
+                  ))}
                 </div>
-                
-                <div className="space-y-6">
-                  {/* === ASAMBLEA VIRTUAL JITSI === */}
-                  <div className="relative bg-white/[0.03] rounded-[2.5rem] p-8 sm:p-10 shadow-[0_20px_50px_rgba(0,0,0,0.3)] border border-white/5 overflow-hidden group hover:border-white/10 transition-all backdrop-blur-3xl">
-                    <div className="absolute top-0 right-0 w-64 h-64 rounded-full blur-[100px] opacity-10 group-hover:opacity-30 transition-opacity duration-700" style={{ backgroundColor: config.tema.color_secundario }}></div>
-                    <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-8">
-                      <div className="max-w-lg">
-                        <div className="flex items-center gap-3 mb-5">
-                          <span className="flex h-3 w-3 relative">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-500 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
-                          </span>
-                          <span className="text-rose-400 text-[10px] font-black tracking-widest uppercase">Transmisión Oficial</span>
+              </div>
+            </motion.section>
+
+            {/* --- MÓDULOS DE PARTICIPACIÓN --- */}
+            {config.modulos.participacion_activa && (
+               <div className="space-y-6">
+                  {/* Asamblea */}
+                  <div className="bg-white/[0.02] border border-white/5 rounded-[2rem] p-8 backdrop-blur-xl shadow-xl relative overflow-hidden group">
+                     <div className="absolute right-0 top-0 w-1/2 h-full bg-gradient-to-l from-indigo-500/10 to-transparent pointer-events-none"></div>
+                     <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                        <div>
+                           <div className="flex items-center gap-2 mb-3">
+                              <span className="relative flex h-3 w-3"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span></span>
+                              <span className="text-red-400 text-xs font-bold uppercase tracking-wider">En Vivo</span>
+                           </div>
+                           <h3 className="text-2xl font-bold text-white mb-2">Sala de Asamblea Oficial</h3>
+                           <p className="text-slate-400 text-sm max-w-md">Participa en la toma de decisiones. Tu micrófono estará silenciado al ingresar.</p>
                         </div>
-                        <h3 className="text-3xl font-black text-white mb-4 tracking-tight">Sala de Asamblea</h3>
-                        <p className="text-white/60 text-sm leading-relaxed mb-8">
-                          Únete a la discusión en tiempo real. Tu micrófono estará silenciado al ingresar para mantener el orden. Acceso exclusivo y cifrado.
-                        </p>
-                        <Link href="/asamblea" className="inline-flex items-center justify-center gap-3 text-white font-bold py-3.5 px-8 rounded-2xl transition-all duration-300 w-full sm:w-auto shadow-lg hover:-translate-y-1" style={{ backgroundColor: config.tema.color_secundario, boxShadow: `0 10px 25px ${hexToRGB(config.tema.color_secundario, 0.4)}` }}>
-                          <span>Ingresar a la Sala</span>
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M17 8l4 4m0 0l-4 4m4-4H3" /></svg>
+                        <Link href="/asamblea" className="shrink-0 px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/25 hover:shadow-indigo-500/40 hover:-translate-y-0.5">
+                           Entrar a la Sala →
                         </Link>
-                      </div>
-                    </div>
+                     </div>
                   </div>
 
-                  {/* === SISTEMA DE VOTACIÓN === */}
-                  <div className="bg-white/[0.03] backdrop-blur-3xl rounded-[2.5rem] border border-white/5 p-8 sm:p-10 shadow-2xl relative overflow-hidden">
-                    <div className="flex items-center gap-4 mb-8 border-b border-white/5 pb-6">
-                      <div className="p-3.5 rounded-2xl font-bold text-2xl shadow-inner border border-white/5" style={{ backgroundColor: hexToRGB(config.tema.color_secundario, 0.15) }}>🗳️</div>
-                      <div>
-                        <h3 className="text-xl font-black text-white tracking-tight">Sistema de Votación</h3>
-                        <p className="text-[10px] text-white/40 font-black mt-1 uppercase tracking-[0.2em]">Blockchain interna cifrada</p>
-                      </div>
-                    </div>
+                  {/* Votaciones */}
+                  {asambleas.length > 0 && (
+                     <div className="bg-white/[0.02] border border-white/5 rounded-[2rem] p-8 backdrop-blur-xl shadow-xl">
+                        <div className="flex items-center gap-3 mb-8">
+                           <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-lg">🗳️</div>
+                           <h3 className="text-xl font-bold text-white">Votaciones Activas</h3>
+                        </div>
+                        <div className="space-y-6">
+                           {asambleas.map((asamblea) => (
+                              <div key={asamblea.id} className="p-6 bg-slate-900/50 border border-white/5 rounded-2xl">
+                                 <h4 className="text-lg font-bold text-white mb-2">{asamblea.titulo}</h4>
+                                 <p className="text-sm text-slate-400 mb-6">Elige una opción. Tu voto es secreto y definitivo.</p>
+                                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                    <button onClick={() => handleVotar(asamblea.id, 'A favor')} className="py-3 bg-white/5 hover:bg-emerald-500/20 hover:text-emerald-400 hover:border-emerald-500/30 border border-white/5 rounded-xl font-semibold transition-all">👍 A Favor</button>
+                                    <button onClick={() => handleVotar(asamblea.id, 'En contra')} className="py-3 bg-white/5 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30 border border-white/5 rounded-xl font-semibold transition-all">👎 En Contra</button>
+                                    <button onClick={() => handleVotar(asamblea.id, 'Abstención')} className="py-3 bg-white/5 hover:bg-slate-700/50 border border-white/5 rounded-xl font-semibold transition-all">✋ Abstenerse</button>
+                                 </div>
+                                 {votoEstado && (
+                                    <div className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm font-medium rounded-lg text-center">
+                                       Voto registrado: {votoEstado}
+                                    </div>
+                                 )}
+                              </div>
+                           ))}
+                        </div>
+                     </div>
+                  )}
+               </div>
+            )}
+          </div>
 
-                    {asambleas.length === 0 ? (
-                      <div className="bg-black/20 border border-white/5 rounded-3xl p-12 text-center">
-                        <span className="text-5xl mb-4 opacity-30 block drop-shadow-md">🧘</span>
-                        <p className="text-white font-black text-lg">Todo tranquilo.</p>
-                        <p className="text-white/50 text-sm mt-2 font-medium">No hay votaciones activas en este momento.</p>
-                      </div>
-                    ) : (
-                      <div className="space-y-6">
-                        {asambleas.map((asamblea) => (
-                          <div key={asamblea.id} className="bg-black/20 p-8 rounded-3xl border border-white/5 relative overflow-hidden group">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/5 rounded-full blur-2xl group-hover:bg-red-500/10 transition-colors"></div>
-                            <span className="px-3.5 py-1.5 bg-red-500/10 text-red-400 text-[9px] font-black uppercase rounded-xl mb-4 inline-block tracking-widest border border-red-500/20 shadow-sm relative z-10">Votación Abierta</span>
-                            <h4 className="text-xl font-black text-white leading-tight mb-3 relative z-10">{asamblea.titulo}</h4>
-                            <p className="text-xs text-white/50 font-medium mb-8 relative z-10">Tu voto es anónimo, único y no puede ser modificado una vez emitido.</p>
-                            
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 relative z-10">
-                              <button onClick={() => handleVotar(asamblea.id, 'A favor')} className="group/btn flex items-center justify-center gap-2 bg-white/5 border border-white/5 hover:border-emerald-500/40 hover:bg-emerald-500/10 text-emerald-400 text-sm font-bold py-4 px-4 rounded-2xl transition-all duration-300">
-                                <span className="group-hover/btn:scale-125 transition-transform drop-shadow-sm">👍</span> A Favor
-                              </button>
-                              <button onClick={() => handleVotar(asamblea.id, 'En contra')} className="group/btn flex items-center justify-center gap-2 bg-white/5 border border-white/5 hover:border-rose-500/40 hover:bg-rose-500/10 text-rose-400 text-sm font-bold py-4 px-4 rounded-2xl transition-all duration-300">
-                                <span className="group-hover/btn:scale-125 transition-transform drop-shadow-sm">👎</span> En Contra
-                              </button>
-                              <button onClick={() => handleVotar(asamblea.id, 'Abstención')} className="group/btn flex items-center justify-center gap-2 bg-white/5 border border-white/5 hover:border-slate-400/40 hover:bg-slate-700/30 text-slate-300 text-sm font-bold py-4 px-4 rounded-2xl transition-all duration-300">
-                                <span className="group-hover/btn:scale-125 transition-transform drop-shadow-sm">✋</span> Abstenerse
-                              </button>
-                            </div>
-                            
-                            {votoEstado && (
-                              <motion.div initial={{opacity: 0, y: 10}} animate={{opacity: 1, y: 0}} className="mt-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl text-xs text-emerald-400 font-bold flex items-center gap-3 relative z-10 backdrop-blur-sm">
-                                <span className="bg-emerald-500/20 p-2 rounded-xl text-sm">✅</span> 
-                                <span>Voto Registrado: <span className="uppercase text-white bg-emerald-600/50 px-3 py-1 rounded-full ml-1 border border-emerald-500/30">{votoEstado}</span></span>
-                              </motion.div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </motion.section>
-            </div>
-          )}
-
-          {/* MÓDULO 3: ACTUALIDAD */}
+          {/* --- COLUMNA DERECHA: ACTUALIDAD --- */}
           {config.modulos.actualidad && (
-            <div className="lg:col-span-1">
-              <motion.section initial={{opacity: 0, x: 20}} animate={{opacity: 1, x: 0}} transition={{delay: 0.3}} className="sticky top-10">
-                <div className="flex items-center gap-3 mb-6 pl-2">
-                  <h2 className="text-2xl font-black text-white tracking-tight flex items-center gap-3">
-                    <span style={{ color: config.tema.color_secundario }}>🔔</span> Actualidad
-                  </h2>
-                </div>
-
-                <div className="bg-white/[0.03] backdrop-blur-3xl rounded-[2.5rem] border border-white/5 shadow-2xl overflow-hidden min-h-[500px]">
-                  <div className="p-6 border-b border-white/5 bg-black/20 flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-inner border border-white/5" style={{ backgroundColor: hexToRGB(config.tema.color_secundario, 0.15) }}>📰</div>
-                    <h4 className="text-lg font-black text-white tracking-tight">Muro de Noticias</h4>
-                  </div>
-                  
-                  <div className="p-6 space-y-4 max-h-[600px] overflow-y-auto">
+            <div className="lg:col-span-4">
+              <motion.section initial={{opacity: 0, x: 20}} animate={{opacity: 1, x: 0}} transition={{delay: 0.5}} className="bg-white/[0.02] border border-white/5 rounded-[2.5rem] backdrop-blur-2xl shadow-2xl overflow-hidden sticky top-8">
+                 <div className="p-8 border-b border-white/5 bg-white/5">
+                    <h3 className="text-xl font-bold text-white flex items-center gap-3">
+                       <span className="text-2xl" style={{color: config.tema.color_secundario}}>📰</span> 
+                       Muro de Noticias
+                    </h3>
+                 </div>
+                 <div className="p-6 space-y-4 max-h-[600px] overflow-y-auto custom-scrollbar">
                     {comunicados.length === 0 ? (
-                      <div className="text-center py-20 flex flex-col items-center">
-                        <span className="text-5xl mb-4 opacity-30 drop-shadow-md">📭</span>
-                        <p className="text-white/40 font-bold text-sm">Sin comunicados recientes.</p>
-                      </div>
+                       <p className="text-slate-500 text-center py-10 font-medium">No hay noticias recientes.</p>
                     ) : (
-                      comunicados.map((noticia) => (
-                        <article key={noticia.id} className="bg-black/20 hover:bg-black/40 p-6 rounded-3xl border border-white/5 transition-all duration-300 group hover:border-white/10 hover:shadow-lg">
-                          <span className="text-[9px] font-black uppercase tracking-[0.2em] mb-3 inline-block px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/5" style={{ color: config.tema.color_secundario }}>
-                            {new Date(noticia.fecha_creacion).toLocaleDateString('es-CL')}
-                          </span>
-                          <h4 className="text-sm font-bold text-white mb-2.5 leading-snug group-hover:text-blue-300 transition-colors">{noticia.titulo}</h4>
-                          <p className="text-xs text-white/50 font-medium leading-relaxed line-clamp-4">{noticia.contenido}</p>
-                        </article>
-                      ))
+                       comunicados.map((noticia) => (
+                          <article key={noticia.id} className="p-5 bg-black/20 hover:bg-black/40 border border-white/5 rounded-2xl transition-colors group cursor-pointer">
+                             <span className="text-[10px] font-bold text-slate-400 mb-2 block">{new Date(noticia.fecha_creacion).toLocaleDateString('es-CL')}</span>
+                             <h4 className="text-base font-bold text-white mb-2 group-hover:text-indigo-400 transition-colors">{noticia.titulo}</h4>
+                             <p className="text-sm text-slate-400 line-clamp-3 leading-relaxed">{noticia.contenido}</p>
+                          </article>
+                       ))
                     )}
-                  </div>
-                </div>
+                 </div>
               </motion.section>
             </div>
           )}
+          
         </div>
       </main>
     </div>
