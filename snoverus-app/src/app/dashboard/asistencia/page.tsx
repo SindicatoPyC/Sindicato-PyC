@@ -92,6 +92,7 @@ export default function AsistenciaPage() {
          await supabase.from('asambleas_votaciones').update({ estado: 'Cerrada' }).eq('id', asambleaActiva.id);
       }
 
+      // 1. Crear en asambleas_votaciones (Para el flujo de votación y QR activo)
       const { data: nuevaAsamblea, error } = await supabase
         .from('asambleas_votaciones')
         .insert([{ 
@@ -103,6 +104,14 @@ export default function AsistenciaPage() {
         .single();
         
       if (error) throw error;
+
+      // 2. ¡POBLAR AUTOMÁTICAMENTE EL HISTORIAL PRO CON AUDITORÍA COMPLETA!
+      await supabase.from('historial_asambleas').insert([{
+        titulo: tituloNuevaAsamblea,
+        sindicato_id: perfil.sindicato_id,
+        created_by: user.id,
+        creador_nombre: perfil.full_name || 'Administrador del Sindicato'
+      }]);
 
       const { data: socios } = await supabase.from('profiles').select('id').eq('sindicato_id', perfil.sindicato_id);
       if (socios && socios.length > 0) {
@@ -120,7 +129,7 @@ export default function AsistenciaPage() {
       setMostrarModalAsamblea(false);
       setTituloNuevaAsamblea('');
       fetchAsistenciaData();
-      alert('✅ Asamblea iniciada exitosamente.');
+      alert('✅ Asamblea iniciada y registrada en el Historial Pro exitosamente.');
       
     } catch (err: any) {
       alert(`❌ Error al iniciar asamblea: ${err.message}`);
@@ -175,7 +184,8 @@ export default function AsistenciaPage() {
         asamblea_titulo: asambleaActiva.titulo, 
         usuario_rut: perfil.rut,
         user_id: user.id,
-        estado: 'Presente'
+        estado: 'Presente',
+        sindicato_id: perfil.sindicato_id
       }]);
       errorObj = error;
     }

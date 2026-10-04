@@ -109,7 +109,7 @@ export default function RegistrarAsistenciaPage({ params }: { params: { id: stri
                 onClick={() => router.push('/asamblea')} 
                 className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-4 rounded-2xl shadow-[0_10px_25px_rgba(37,99,235,0.4)] transition-all transform hover:-translate-y-0.5 uppercase tracking-widest text-xs flex items-center justify-center gap-2"
               >
-                <span>🎥</span> Entrar a la Sala Virtual (Jitsi)
+                <span>📹</span> Unirse a la Videollamada Oficial
               </button>
             </div>
           </div>
