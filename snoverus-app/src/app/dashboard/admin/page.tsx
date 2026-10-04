@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '../../lib/supabase';
-import emailjs from '@emailjs/browser';
 
 export default function AdminPanel() {
   const router = useRouter();
@@ -324,6 +323,26 @@ export default function AdminPanel() {
       await supabase.from('postulaciones').update({ estado: 'Rechazada' }).eq('id', id);
       setPostulaciones(postulaciones.filter(p => p.id !== id));
     } catch (err) {}
+  };
+
+  const abrirModalResolucion = (ticket: any) => {
+    setTicketSeleccionado(ticket);
+    setDetalleResolucion('');
+  };
+
+  const confirmarResolucionTicket = async () => {
+    if (!detalleResolucion.trim()) return alert("Debes ingresar un detalle de resolución.");
+    setProcesandoTicket(true);
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('tickets_soporte').update({ estado: 'Resuelto' }).eq('id', ticketSeleccionado.id);
+
+      if (!error) {
+        setTickets(tickets.map(t => t.id === ticketSeleccionado.id ? { ...t, estado: 'Resuelto' } : t));
+        alert(`✅ Ticket marcado como resuelto.`);
+        setTicketSeleccionado(null);
+      }
+    } catch (err: any) {} finally { setProcesandoTicket(false); }
   };
 
   const handleLogout = async () => {
@@ -767,7 +786,7 @@ export default function AdminPanel() {
                   </section>
 
                   <section className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/50">
-                    <h3 className="text-xl font-black text-slate-800 mb-6">🗳️ Apertura de Votaciones</h3>
+                    <h3 className="text-xl font-black text-slate-800 mb-6">🗳️️ Apertura de Votaciones</h3>
                     <form onSubmit={handleAbrirAsamblea} className="space-y-5">
                       <div>
                         <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Materia a Votar</label>
