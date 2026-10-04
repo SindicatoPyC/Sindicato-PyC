@@ -20,7 +20,6 @@ export default function RegistrarAsistenciaPage({ params }: { params: { id: stri
       if (sessionError || !user) {
         setEstado('error');
         setMensaje('Debes iniciar sesión en la plataforma primero para registrar tu asistencia.');
-        // Espera 3 segundos para que el usuario lea el mensaje y luego lo manda al login guardando la ruta
         setTimeout(() => {
           router.push(`/?redirect=/asistencia/${params.id}`);
         }, 3000);
@@ -44,13 +43,14 @@ export default function RegistrarAsistenciaPage({ params }: { params: { id: stri
 
       const horaActual = new Date().toISOString();
 
-      // Registro oficial en Supabase para el Quórum en Vivo guardando la hora exacta
+      // Registro oficial en Supabase con el sindicato_id incluido para el Historial Pro en tiempo real
       const { error: insertError } = await supabase.from('asistencia_asambleas').insert([{
         asamblea_titulo: asamblea.titulo,
         usuario_rut: profile.rut,
         user_id: user.id,
         estado: 'Presente',
-        fecha_asistencia: horaActual
+        fecha_asistencia: horaActual,
+        sindicato_id: asamblea.sindicato_id // <- ¡Clave para que aparezca en el Historial Pro del Admin!
       }]);
 
       setTimestamp(new Date(horaActual).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
@@ -97,7 +97,6 @@ export default function RegistrarAsistenciaPage({ params }: { params: { id: stri
             <h2 className="text-3xl font-black text-white tracking-tight">¡Estás Presente!</h2>
             <p className="text-slate-300 text-sm font-medium leading-relaxed">{mensaje}</p>
             
-            {/* Visualización del Timestamp de Registro */}
             {timestamp && (
               <div className="bg-white/5 rounded-xl px-5 py-2.5 border border-white/10 text-xs font-mono font-bold text-emerald-400 shadow-inner w-fit">
                 Hora de registro: {timestamp}
