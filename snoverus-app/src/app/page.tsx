@@ -30,6 +30,9 @@ function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [planAnual, setPlanAnual] = useState(false); // Antonino
+  const [modalPlan, setModalPlan] = useState<string | null>(null); // Antonino
+  const [modalCiclo, setModalCiclo] = useState<'mensual' | 'anual'>('mensual'); // Antonino
   
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -106,6 +109,7 @@ function LoginForm() {
   };
 
   return (
+    <>
     <div className="min-h-screen w-full bg-slate-950 font-sans text-slate-200 grid grid-cols-1 lg:grid-cols-12 overflow-hidden relative selection:bg-cyan-600 selection:text-white">
       
       {/* --- COLUMNA IZQUIERDA: HERO Y CARRUSEL --- */}
@@ -226,7 +230,231 @@ function LoginForm() {
 
         </motion.div>
       </div>
-    </div>
+        </div>
+  
+
+    {/* SECCIÓN DE PLANES */}
+    <div className="w-full bg-[#020617] py-24 px-6 border-t border-white/5">
+      <div className="max-w-6xl mx-auto">
+
+        {/* Título */}
+        <div className="text-center mb-16">
+          <span className="inline-flex items-center gap-2 bg-cyan-500/10 border border-cyan-500/20 px-4 py-1.5 rounded-full text-cyan-400 text-xs font-black tracking-widest uppercase mb-6">
+            💼 Planes y Precios
+          </span>
+          <h2 className="text-4xl sm:text-5xl font-black text-white tracking-tight mb-4">
+            Elige el plan ideal para <span className="text-cyan-400">tu organización</span>
+          </h2>
+          <p className="text-slate-400 text-base font-medium max-w-xl mx-auto">
+            Digitaliza tu sindicato desde el primer día. Sin contratos largos, sin letra chica.
+          </p>
+        </div>
+
+                    </div>
+
+        {/* Banner prueba gratis */}
+        <div className="flex justify-center mb-12">
+          <div className="inline-flex items-center gap-2 bg-cyan-500/10 border border-cyan-500/20 px-6 py-3 rounded-full text-cyan-400 text-xs font-black tracking-widest uppercase">
+            🎁 Plan Starter incluye 30 días gratis — sin tarjeta de crédito
+          </div>
+        </div>
+
+        {/* Tarjetas de planes */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+
+          {/* STARTER */}
+          <div className="relative flex flex-col p-8 rounded-[2rem] bg-white/[0.02] border border-white/10 hover:border-cyan-500/30 transition-all duration-300 hover:shadow-[0_0_30px_rgba(6,182,212,0.1)]">
+            <div className="mb-6">
+              <span className="text-2xl mb-4 block">🌱</span>
+              <h3 className="text-xl font-black text-white mb-1">Starter</h3>
+              <p className="text-slate-500 text-xs font-medium">Para sindicatos que recién digitalizan</p>
+            </div>
+            <div className="mb-6">
+              <div className="flex items-end gap-1">
+                <span className="text-4xl font-black text-white">
+                  ${planAnual ? '4.158' : '4.990'}
+                </span>
+                <span className="text-slate-500 text-sm font-medium mb-1">CLP/mes</span>
+              </div>
+              {planAnual && <p className="text-cyan-400 text-xs font-bold mt-1">Pagado anualmente</p>}
+              <p className="text-emerald-400 text-xs font-black mt-2">✓ 30 días gratis, sin tarjeta</p>
+            </div>
+            <ul className="space-y-3 mb-8 flex-1">
+              {['Hasta 30 socios', 'Dashboard y comunicados', 'Beneficios y credencial digital', 'Tickets de soporte', 'Chat Legal IA', 'Libro de actas'].map((item) => (
+                <li key={item} className="flex items-center gap-3 text-slate-400 text-sm">
+                  <span className="text-cyan-400 text-xs">✓</span> {item}
+                </li>
+              ))}
+            </ul>
+            <button 
+              onClick={() => setModalPlan('Starter')}
+              className="w-full py-4 rounded-2xl bg-white/5 hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/30 text-white font-black text-xs uppercase tracking-widest transition-all">
+              Comenzar gratis
+            </button>
+          </div>
+
+          {/* PROFESIONAL */}
+          <div className="relative flex flex-col p-8 rounded-[2rem] bg-gradient-to-b from-cyan-500/10 to-blue-600/5 border border-cyan-500/30 shadow-[0_0_40px_rgba(6,182,212,0.1)] scale-105">
+            <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+              <span className="bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg">
+                ⭐ Más popular
+              </span>
+            </div>
+            <div className="mb-6">
+              <span className="text-2xl mb-4 block">🚀</span>
+              <h3 className="text-xl font-black text-white mb-1">Profesional</h3>
+              <p className="text-slate-500 text-xs font-medium">Para organizaciones en crecimiento</p>
+            </div>
+            <div className="mb-6">
+              <div className="flex items-end gap-1">
+                <span className="text-4xl font-black text-white">
+                  ${planAnual ? '8.325' : '9.990'}
+                </span>
+                <span className="text-slate-500 text-sm font-medium mb-1">CLP/mes</span>
+              </div>
+              {planAnual && <p className="text-cyan-400 text-xs font-bold mt-1">Pagado anualmente</p>}
+            </div>
+            <ul className="space-y-3 mb-8 flex-1">
+              {['Hasta 150 socios', 'Todo lo del Starter', 'Asambleas virtuales', 'Votaciones y encuestas', 'Fondo solidario', 'Soporte prioritario'].map((item) => (
+                <li key={item} className="flex items-center gap-3 text-slate-400 text-sm">
+                  <span className="text-cyan-400 text-xs">✓</span> {item}
+                </li>
+              ))}
+            </ul>
+            <button 
+              onClick={() => setModalPlan('Profesional')}
+              className="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-xs uppercase tracking-widest transition-all shadow-[0_10px_20px_rgba(8,145,178,0.2)] hover:shadow-[0_10px_25px_rgba(8,145,178,0.5)] transform hover:-translate-y-0.5">
+              Contratar ahora
+            </button>
+          </div>
+
+          {/* ENTERPRISE */}
+          <div className="relative flex flex-col p-8 rounded-[2rem] bg-white/[0.02] border border-white/10 hover:border-purple-500/30 transition-all duration-300 hover:shadow-[0_0_30px_rgba(168,85,247,0.1)]">
+            <div className="mb-6">
+              <span className="text-2xl mb-4 block">🏢</span>
+              <h3 className="text-xl font-black text-white mb-1">Enterprise</h3>
+              <p className="text-slate-500 text-xs font-medium">Para grandes organizaciones sindicales</p>
+            </div>
+            <div className="mb-6">
+              <div className="flex items-end gap-1">
+                <span className="text-4xl font-black text-white">
+                  ${planAnual ? '12.492' : '14.990'}
+                </span>
+                <span className="text-slate-500 text-sm font-medium mb-1">CLP/mes</span>
+              </div>
+              {planAnual && <p className="text-cyan-400 text-xs font-bold mt-1">Pagado anualmente</p>}
+            </div>
+            <ul className="space-y-3 mb-8 flex-1">
+              {['Socios ilimitados', 'Todo lo del Profesional', 'Negociación colectiva', 'Personalización de marca', 'Múltiples administradores', 'Soporte dedicado 24/7'].map((item) => (
+                <li key={item} className="flex items-center gap-3 text-slate-400 text-sm">
+                  <span className="text-purple-400 text-xs">✓</span> {item}
+                </li>
+              ))}
+            </ul>
+            <button 
+              onClick={() => setModalPlan('Enterprise')}
+              className="w-full py-4 rounded-2xl bg-white/5 hover:bg-purple-500/10 border border-white/10 hover:border-purple-500/30 text-white font-black text-xs uppercase tracking-widest transition-all">
+              Contratar ahora
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+    {/* MODAL DE CONTRATACIÓN */}
+    {modalPlan && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/70 backdrop-blur-sm">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.95 }}
+          transition={{ duration: 0.2 }}
+          className="w-full max-w-md bg-[#0a0f1e] border border-white/10 rounded-[2rem] p-8 shadow-2xl"
+        >
+          {/* Cabecera */}
+          <div className="flex items-center justify-between mb-8">
+            <div>
+              <p className="text-slate-500 text-xs font-black uppercase tracking-widest mb-1">Plan seleccionado</p>
+              <h3 className="text-2xl font-black text-white">{modalPlan}</h3>
+            </div>
+            <button
+              onClick={() => setModalPlan(null)}
+              className="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-all text-sm"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Opciones de ciclo */}
+          <p className="text-slate-500 text-xs font-black uppercase tracking-widest mb-4">Elige tu ciclo de pago</p>
+          <div className="space-y-3 mb-8">
+
+            {/* Opción mensual */}
+            <button
+              onClick={() => setModalCiclo('mensual')}
+              className={`w-full flex items-center justify-between p-5 rounded-2xl border transition-all ${
+                modalCiclo === 'mensual'
+                  ? 'border-cyan-500/50 bg-cyan-500/10'
+                  : 'border-white/10 bg-white/[0.02] hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                  modalCiclo === 'mensual' ? 'border-cyan-400' : 'border-slate-600'
+                }`}>
+                  {modalCiclo === 'mensual' && <div className="w-2.5 h-2.5 rounded-full bg-cyan-400" />}
+                </div>
+                <div className="text-left">
+                  <p className="text-white text-sm font-black">Mensual</p>
+                  <p className="text-slate-500 text-xs">Cancela cuando quieras</p>
+                </div>
+              </div>
+              <span className="text-white font-black text-sm">
+                ${modalPlan === 'Starter' ? '4.990' : modalPlan === 'Profesional' ? '9.990' : '14.990'} CLP/mes
+              </span>
+            </button>
+
+            {/* Opción anual */}
+            <button
+              onClick={() => setModalCiclo('anual')}
+              className={`w-full flex items-center justify-between p-5 rounded-2xl border transition-all ${
+                modalCiclo === 'anual'
+                  ? 'border-cyan-500/50 bg-cyan-500/10'
+                  : 'border-white/10 bg-white/[0.02] hover:bg-white/5'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                  modalCiclo === 'anual' ? 'border-cyan-400' : 'border-slate-600'
+                }`}>
+                  {modalCiclo === 'anual' && <div className="w-2.5 h-2.5 rounded-full bg-cyan-400" />}
+                </div>
+                <div className="text-left">
+                  <p className="text-white text-sm font-black">Anual <span className="text-cyan-400 text-xs ml-1">2 meses gratis</span></p>
+                  <p className="text-slate-500 text-xs">Un solo pago al año</p>
+                </div>
+              </div>
+              <span className="text-white font-black text-sm">
+                ${modalPlan === 'Starter' ? '4.158' : modalPlan === 'Profesional' ? '8.325' : '12.492'} CLP/mes
+              </span>
+            </button>
+
+          </div>
+
+          {/* Botón contratar */}
+          <button className="w-full py-4 rounded-2xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-xs uppercase tracking-widest transition-all shadow-[0_10px_20px_rgba(8,145,178,0.2)] hover:shadow-[0_10px_25px_rgba(8,145,178,0.4)] transform hover:-translate-y-0.5">
+            Contratar {modalPlan} {modalCiclo === 'anual' ? 'Anual' : 'Mensual'}
+          </button>
+
+          {modalPlan === 'Starter' && (
+            <p className="text-center text-emerald-400 text-xs font-black mt-4">✓ Incluye 30 días gratis, sin tarjeta de crédito</p>
+          )}
+
+        </motion.div>
+      </div>
+    )}
+    
+    </>
   );
 }
 
