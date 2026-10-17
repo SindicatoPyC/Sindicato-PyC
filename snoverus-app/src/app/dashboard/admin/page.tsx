@@ -380,12 +380,15 @@ export default function AdminPanel() {
     }
 
     // 2. Insertar el perfil de forma segura
+    // Usa el rol_solicitado si existe, sino 'socio'
+    const rolAAsignar = postulacion.rol_solicitado ? postulacion.rol_solicitado.toLowerCase() : 'socio';
+    
     const { error: profileError } = await supabase.from('profiles').upsert({ 
       id: authData.user.id, 
       rut: postulacion.rut, 
       full_name: postulacion.full_name, 
       email: postulacion.email, 
-      role: 'socio', 
+      role: rolAAsignar, 
       sindicato_id: idSindicatoActual 
     });
 
@@ -449,6 +452,14 @@ export default function AdminPanel() {
     await supabase.auth.signOut();
     document.cookie = "sb-sindicato-session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
     router.push('/');
+  };
+
+  // --- NUEVO: Helper para mapeo visual de roles pedido por el profesor ---
+  const getRoleNameUI = (rol: string | null | undefined) => {
+    const r = String(rol || '').toLowerCase();
+    if (r === 'superadmin') return 'Admin';
+    if (r === 'admin' || r === 'administrador') return 'Presidente';
+    return 'Socio';
   };
 
   if (!isMounted || validando) {
@@ -745,7 +756,12 @@ export default function AdminPanel() {
                         ) : (
                           postulaciones.map((post) => (
                             <tr key={post.id} className="hover:bg-rose-50/20 transition-colors">
-                              <td className="p-5 pl-8 font-extrabold text-slate-800 text-sm">{post.full_name}</td>
+                              <td className="p-5 pl-8">
+                                <span className="font-extrabold text-slate-800 text-sm block">{post.full_name}</span>
+                                <span className="text-[10px] font-black uppercase text-amber-500 tracking-wider">
+                                  Solicita rol: {getRoleNameUI(post.rol_solicitado)}
+                                </span>
+                              </td>
                               <td className="p-5 text-sm font-bold text-slate-500">{post.rut}</td>
                               <td className="p-5 text-sm font-medium text-slate-600">{post.email}</td>
                               <td className="p-5 pr-8 text-right flex justify-end gap-2">
@@ -778,7 +794,6 @@ export default function AdminPanel() {
                       </thead>
                       <tbody className="divide-y divide-slate-50">
                         {usuarios.map((user) => {
-                          const isAdminLocal = ['admin', 'administrador'].includes(String(user.role || '').toLowerCase());
                           return (
                             <tr key={user.id} className="hover:bg-slate-50 transition-colors">
                               <td className="p-5 pl-8 font-extrabold text-slate-800 text-sm">{user.full_name || 'Sin nombre'}</td>
@@ -787,8 +802,11 @@ export default function AdminPanel() {
                                 {user.email}
                               </td>
                               <td className="p-5">
-                                <span className={`px-3.5 py-1.5 text-[9px] font-black uppercase rounded-full border ${isAdminLocal ? 'bg-indigo-50 text-indigo-600 border-indigo-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
-                                  {isAdminLocal ? 'Admin' : 'Socio'}
+                                <span className={`px-3.5 py-1.5 text-[9px] font-black uppercase rounded-full border 
+                                  ${String(user.role).toLowerCase() === 'superadmin' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
+                                    ['admin', 'administrador'].includes(String(user.role).toLowerCase()) ? 'bg-amber-50 text-amber-600 border-amber-200' : 
+                                    'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                                  {getRoleNameUI(user.role)}
                                 </span>
                               </td>
                               <td className="p-5 pr-8 text-right relative">

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { createClient } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
+import { QRCodeCanvas } from 'qrcode.react'; // Importamos el componente de QR
 
 export default function CredencialPage() {
   const [isMounted, setIsMounted] = useState(false);
@@ -11,6 +12,7 @@ export default function CredencialPage() {
 
   // Datos del socio
   const [socio, setSocio] = useState({
+    id: "", // Agregamos el ID para usarlo en el escáner
     nombres: "Cargando...",
     apellidos: "",
     rut: "",
@@ -28,14 +30,14 @@ export default function CredencialPage() {
       try {
         const supabase = createClient();
         
-        // 1. Obtener el usuario autenticado de forma segura a través de Supabase Auth
+        // 1. Obtener el usuario autenticado
         const { data: { user }, error: authError } = await supabase.auth.getUser();
         
         if (authError || !user) {
           throw new Error("No hay sesión activa");
         }
 
-        // 2. Buscar el perfil usando el ID único del usuario, no un RUT sacado de una cookie
+        // 2. Buscar el perfil en la base de datos
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
@@ -46,11 +48,11 @@ export default function CredencialPage() {
 
         if (data) {
           setSocio({
-            nombres: data.nombres || data.full_name || 'Socio',
-            apellidos: data.apellidos || 'Snoverus',
+            id: user.id, // Guardamos el UUID para el registro de asistencia
+            nombres: data.full_name || 'Socio',
+            apellidos: '', // Simplificamos, ya que full_name suele contener ambos
             rut: data.rut || '---',
-            // Adaptado para leer el rol correcto según tu esquema
-            rol: (data.rol === 'Administrador' || data.role === 'admin') ? 'Directiva' : 'Socio Activo'
+            rol: (data.role === 'admin' || data.role === 'administrador') ? 'Directiva' : 'Socio Activo'
           });
         }
       } catch (error) {
@@ -99,9 +101,12 @@ export default function CredencialPage() {
     }
   };
 
-  const qrUrl = socio.rut && socio.rut !== '---'
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=SindicatoSnoverus_Validacion_${socio.rut}`
-    : 'https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=Cargando...';
+  // Preparamos los datos estructurados que irán dentro del QR
+  const qrData = JSON.stringify({
+    socio_id: socio.id,
+    rut: socio.rut,
+    timestamp: Date.now() // Añade seguridad contra "pantallazos" antiguos
+  });
 
   if (!isMounted) return null;
 
@@ -136,8 +141,7 @@ export default function CredencialPage() {
             </div>
 
             {/* Nombres y Apellidos desde BD */}
-            <h3 className="text-xl font-black text-slate-900 uppercase leading-none mb-1">{socio.nombres}</h3>
-            <h4 className="text-lg font-bold text-slate-500 uppercase mb-5">{socio.apellidos}</h4>
+            <h3 className="text-xl font-black text-slate-900 uppercase leading-none mb-5">{socio.nombres}</h3>
 
             {/* Datos Técnicos */}
             <div className="bg-slate-50 rounded-2xl border border-slate-100 p-4 mb-6">
@@ -159,11 +163,22 @@ export default function CredencialPage() {
 
             {/* Código QR Real de Validación */}
             <div className="bg-white p-3 rounded-2xl border-2 border-slate-100 w-fit mx-auto mb-4 shadow-inner">
-              <img src={qrUrl} alt="Código QR de Validación" className="w-32 h-32 opacity-90" />
+              {socio.rut && socio.rut !== '---' ? (
+                <QRCodeCanvas 
+                  value={qrData} 
+                  size={150} 
+                  level={"H"} // Alto nivel de corrección de errores (ideal para escáneres)
+                  includeMargin={true}
+                />
+              ) : (
+                <div className="w-[150px] h-[150px] flex items-center justify-center bg-slate-100 text-slate-400 text-xs">
+                  Cargando QR...
+                </div>
+              )}
             </div>
 
             <p className="text-[11px] text-slate-500 font-medium max-w-xs mx-auto mb-5 leading-tight">
-              Escanea este código QR en establecimientos adheridos para validar tus beneficios sindicales.
+              Presenta este código al encargado para registrar tu asistencia a la asamblea.
             </p>
 
             {/* Sello de Vigencia Animado */}

@@ -10,6 +10,7 @@ export default function PostularPage() {
   const [email, setEmail] = useState('');
   const [telefono, setTelefono] = useState('');
   const [sindicatoId, setSindicatoId] = useState('');
+  const [rolSolicitado, setRolSolicitado] = useState('socio'); // <-- NUEVO: Estado para el rol
   
   const [sindicatos, setSindicatos] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -21,13 +22,11 @@ export default function PostularPage() {
     async function cargarSindicatos() {
       const supabase = createClient();
       
-      // Eliminamos el .eq('estado', 'Activo') para traerlos todos y filtrar localmente
       const { data, error } = await supabase
         .from('sindicatos')
         .select('id, nombre, estado');
       
       if (!error && data) {
-        // Mostramos todos excepto los que estén explícitamente suspendidos
         const sindicatosVisibles = data.filter(s => 
           !s.estado || s.estado.toLowerCase() !== 'suspendido'
         );
@@ -84,7 +83,8 @@ export default function PostularPage() {
           email: email,
           telefono: telefono, 
           estado: 'Pendiente',
-          sindicato_id: parseInt(sindicatoId)
+          sindicato_id: parseInt(sindicatoId),
+          rol_solicitado: rolSolicitado // <-- NUEVO: Enviando el rol seleccionado a la BD
         }]);
 
       if (insertError) throw insertError;
@@ -130,7 +130,7 @@ export default function PostularPage() {
                 Postular a la Organización
               </h2>
               <p className="text-slate-400 text-sm font-medium">
-                Ingresa tus datos y selecciona tu sindicato
+                Ingresa tus datos y selecciona tu sindicato y rol
               </p>
             </div>
 
@@ -160,6 +160,22 @@ export default function PostularPage() {
                       {sindicato.nombre}
                     </option>
                   ))}
+                </select>
+              </div>
+
+              {/* NUEVO: Selector de Rol solicitado */}
+              <div className="space-y-2 group">
+                <label className="block text-[11px] font-bold text-amber-500 uppercase tracking-wider pl-1 transition-colors group-focus-within:text-amber-400 drop-shadow-sm">
+                  Rol al que Postula
+                </label>
+                <select 
+                  required
+                  value={rolSolicitado}
+                  onChange={(e) => setRolSolicitado(e.target.value)}
+                  className="w-full bg-[#0a1128] border border-amber-900/60 rounded-xl px-5 py-4 text-amber-50 focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 focus:bg-[#0d1838] transition-all font-medium text-sm shadow-inner appearance-none"
+                >
+                  <option value="socio">Socio Trabajador</option>
+                  <option value="admin">Presidente (Directiva)</option>
                 </select>
               </div>
 
