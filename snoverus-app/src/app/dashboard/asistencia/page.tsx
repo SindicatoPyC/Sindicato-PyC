@@ -74,9 +74,7 @@ export default function AsistenciaPage() {
           throw new Error("Formato de QR no reconocido o dañado.");
       }
 
-      if (!qrData.rut || !qrData.sindicato_id) {
-        throw new Error("El QR no es una credencial oficial de Snoverus.");
-      }
+      if (!qrData.rut) throw new Error("El QR no contiene un RUT válido.");
 
       if (Number(qrData.sindicato_id) !== Number(sindicatoId)) {
         throw new Error(`Esta credencial pertenece a otra organización (Sindicato #${qrData.sindicato_id}).`);
@@ -102,7 +100,7 @@ export default function AsistenciaPage() {
         .eq('asamblea_titulo', tituloAsamblea) // IMPORTANTE: Debe coincidir con la asamblea activa
         .maybeSingle();
 
-      if (fetchError) throw new Error("Error de conexión con el servidor.");
+      if (fetchError) throw new Error(`Error buscando registro: ${fetchError.message}`);
 
       if (registroPrevio) {
         if (registroPrevio.hora_salida) {
@@ -110,12 +108,13 @@ export default function AsistenciaPage() {
         } else {
           // Marcar SALIDA
           const { error: updateError } = await supabase.from('asistencia_asambleas').update({ hora_salida: new Date().toISOString() }).eq('id', registroPrevio.id);
-          if (updateError) throw updateError;
+          if (updateError) throw new Error(`Fallo Update BD: ${updateError.message}`);
+          
           if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate([100, 50, 100]);
-          setMensajeStatus({ texto: `👋 Salida Registrada: ${nombreSocio}`, subtexto: `Rol: ${rolSocio} | RUT: ${qrData.rut}`, tipo: 'exit' });
+          setMensajeStatus({ texto: `👋 Salida Registrada`, subtexto: nombreSocio, tipo: 'exit' });
         }
       } else {
-        // 🚨 Marcar ENTRADA vinculada a 'tituloAsamblea'
+        // 🚨 Marcar ENTRADA vinculada a 'tituloAsamblea' (Aquí forzamos que nos muestre el error crudo)
         const { error: insertError } = await supabase
           .from('asistencia_asambleas')
           .insert([{
@@ -128,17 +127,23 @@ export default function AsistenciaPage() {
             hora_entrada: new Date().toISOString()
           }]);
 
-        if (insertError) throw new Error("No se pudo registrar la entrada en la base de datos.");
+        if (insertError) {
+          console.error("Error BD Crudo:", insertError);
+          // ESTO mostrará en tu pantalla roja el error real de la base de datos
+          throw new Error(`Error BD: ${insertError.message || insertError.details || JSON.stringify(insertError)}`);
+        }
+
         if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(200);
-        setMensajeStatus({ texto: `✅ Entrada Autorizada: ${nombreSocio}`, subtexto: `Rol: ${rolSocio} | RUT: ${qrData.rut}`, tipo: 'success' });
+        setMensajeStatus({ texto: `✅ Entrada Autorizada`, subtexto: nombreSocio, tipo: 'success' });
       }
 
       setTimeout(() => setUltimoEscaneado(null), 3000);
 
     } catch (error: any) {
       if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate([200, 100, 200]);
-      setMensajeStatus({ texto: `❌ Acceso Denegado`, subtexto: error.message, tipo: 'error' });
-      setTimeout(() => setUltimoEscaneado(null), 3500);
+      // Mostrará "Error BD: [Motivo]"
+      setMensajeStatus({ texto: `❌ Falló el Registro`, subtexto: error.message, tipo: 'error' });
+      setTimeout(() => setUltimoEscaneado(null), 4500); // Le damos más tiempo para que alcances a leer el error
     }
   };
 
