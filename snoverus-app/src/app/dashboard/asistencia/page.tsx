@@ -82,13 +82,15 @@ export default function AsistenciaPage() {
 
       const supabase = createClient();
 
+      // 🚨 AGREGAMOS EMAIL AL SELECT 🚨
       const { data: perfilSocio } = await supabase
         .from('profiles')
-        .select('full_name, role')
+        .select('full_name, role, email')
         .eq('rut', qrData.rut)
         .single();
 
       const nombreSocio = perfilSocio?.full_name || 'Socio Registrado';
+      const emailSocio = perfilSocio?.email || 'Sin correo';
       const rolSocio = String(perfilSocio?.role === 'admin' || perfilSocio?.role === 'administrador' ? 'Directiva' : 'Socio').toUpperCase();
 
       // Buscamos si ya existe asistencia PARA ESTA ASAMBLEA EXACTA
@@ -97,7 +99,7 @@ export default function AsistenciaPage() {
         .select('*')
         .eq('sindicato_id', sindicatoId)
         .eq('usuario_rut', qrData.rut)
-        .eq('asamblea_titulo', tituloAsamblea) // IMPORTANTE: Debe coincidir con la asamblea activa
+        .eq('asamblea_titulo', tituloAsamblea.trim()) // IMPORTANTE: .trim() para evitar errores por espacios
         .maybeSingle();
 
       if (fetchError) throw new Error(`Error buscando registro: ${fetchError.message}`);
@@ -114,23 +116,23 @@ export default function AsistenciaPage() {
           setMensajeStatus({ texto: `👋 Salida Registrada`, subtexto: nombreSocio, tipo: 'exit' });
         }
       } else {
-        // 🚨 Marcar ENTRADA vinculada a 'tituloAsamblea' (Aquí forzamos que nos muestre el error crudo)
+        // 🚨 Marcar ENTRADA con los nuevos campos de auditoría
         const { error: insertError } = await supabase
           .from('asistencia_asambleas')
           .insert([{
             sindicato_id: sindicatoId,
             usuario_rut: qrData.rut,
             usuario_nombre: nombreSocio,
+            usuario_email: emailSocio, // Guardamos el correo directamente
             usuario_rol: rolSocio,
             operador_nombre: operadorNombre, 
-            asamblea_titulo: tituloAsamblea, // 🚨 EL DATO CRÍTICO PARA EL HISTORIAL PRO 🚨
+            asamblea_titulo: tituloAsamblea.trim(), // Evita desajustes con el panel admin
             hora_entrada: new Date().toISOString()
           }]);
 
         if (insertError) {
           console.error("Error BD Crudo:", insertError);
-          // ESTO mostrará en tu pantalla roja el error real de la base de datos
-          throw new Error(`Error BD: ${insertError.message || insertError.details || JSON.stringify(insertError)}`);
+          throw new Error(`Error BD: ${insertError.message || JSON.stringify(insertError)}`);
         }
 
         if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(200);
@@ -141,9 +143,8 @@ export default function AsistenciaPage() {
 
     } catch (error: any) {
       if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate([200, 100, 200]);
-      // Mostrará "Error BD: [Motivo]"
       setMensajeStatus({ texto: `❌ Falló el Registro`, subtexto: error.message, tipo: 'error' });
-      setTimeout(() => setUltimoEscaneado(null), 4500); // Le damos más tiempo para que alcances a leer el error
+      setTimeout(() => setUltimoEscaneado(null), 4500); 
     }
   };
 
