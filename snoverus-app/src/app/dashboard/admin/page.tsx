@@ -16,8 +16,7 @@ export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [idSindicatoActual, setIdSindicatoActual] = useState<number | null>(null);
   const [editNombreSindicato, setEditNombreSindicato] = useState('');
-  const [editLogoSindicato, setEditLogoSindicato] = useState('');
-  const [linkAsamblea, setLinkAsamblea] = useState('');
+  const [editLogoSindicato, setEditLogoSindicato] = useState(''); 
   const [guardandoSindicato, setGuardandoSindicato] = useState(false);
 
   const [tituloNoticia, setTituloNoticia] = useState('');
@@ -27,7 +26,7 @@ export default function AdminPanel() {
   const [tituloAsamblea, setTituloAsamblea] = useState('');
   const [loadingAsamblea, setLoadingAsamblea] = useState(false);
 
-  // Estados para Historial y Asistencia de Asambleas con Auditoría en Tiempo Real
+  // Estados para Historial y Asistencia con Auditoría Realtime
   const [historialAsambleas, setHistorialAsambleas] = useState<any[]>([]);
   const [asistenciaRegistros, setAsistenciaRegistros] = useState<any[]>([]);
   const [tituloNuevaAsamblea, setTituloNuevaAsamblea] = useState('');
@@ -54,6 +53,9 @@ export default function AdminPanel() {
   const [menuAbiertoId, setMenuAbiertoId] = useState<string | null>(null);
   const [ticketMenuAbiertoId, setTicketMenuAbiertoId] = useState<string | number | null>(null);
 
+  // NUEVO: Estado para el menú móvil
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -64,14 +66,14 @@ export default function AdminPanel() {
     }
   }, [isMounted]);
 
-  // SUSCRIPCIÓN EN TIEMPO REAL ROBUSTA
+  // SUSCRIPCIÓN EN TIEMPO REAL PARA ASISTENCIA Y AUDITORÍA
   useEffect(() => {
     if (!idSindicatoActual) return;
 
     const supabase = createClient();
     
     const channel = supabase
-      .channel('admin-realtime-asistencia')
+      .channel('admin-realtime-asistencia-pro')
       .on(
         'postgres_changes',
         {
@@ -80,12 +82,10 @@ export default function AdminPanel() {
           table: 'asistencia_asambleas',
           filter: `sindicato_id=eq.${idSindicatoActual}`
         },
-        async (payload) => {
-          console.log('Cambio de asistencia detectado:', payload);
-          // Consulta simple sin join complejo para evitar error 400
+        async () => {
           const { data: asistData } = await supabase
             .from('asistencia_asambleas')
-            .select('*')
+            .select(`*, profiles(full_name, email)`)
             .eq('sindicato_id', idSindicatoActual);
             
           if (Array.isArray(asistData)) {
@@ -149,7 +149,6 @@ export default function AdminPanel() {
           if (sindicato) {
             setEditNombreSindicato(sindicato.nombre || '');
             setEditLogoSindicato(sindicato.logo_url || '');
-            setLinkAsamblea(sindicato.link_asamblea || '');
           }
 
           const { data: usersData } = await supabase.from('profiles').select('*').eq('sindicato_id', profile.sindicato_id).order('created_at', { ascending: false });
@@ -174,8 +173,12 @@ export default function AdminPanel() {
           const { data: histData } = await supabase.from('historial_asambleas').select('*').eq('sindicato_id', profile.sindicato_id).order('created_at', { ascending: false });
           if (Array.isArray(histData)) setHistorialAsambleas(histData);
 
-          // Carga inicial simple
-          const { data: asistData } = await supabase.from('asistencia_asambleas').select('*').eq('sindicato_id', profile.sindicato_id);
+          // Carga robusta de asistencias con perfiles vinculados
+          const { data: asistData } = await supabase
+            .from('asistencia_asambleas')
+            .select(`*, profiles(full_name, email)`)
+            .eq('sindicato_id', profile.sindicato_id);
+            
           if (Array.isArray(asistData)) setAsistenciaRegistros(asistData);
         }
       }
@@ -183,27 +186,6 @@ export default function AdminPanel() {
       console.error("Error cargando datos:", err);
     } finally {
       setLoadingDatos(false);
-    }
-  };
-
-  const guardarCambiosSindicato = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!idSindicatoActual) return;
-    setGuardandoSindicato(true);
-    try {
-      const supabase = createClient();
-      const { error } = await supabase.from('sindicatos').update({
-        nombre: editNombreSindicato,
-        logo_url: editLogoSindicato.trim() !== '' ? editLogoSindicato.trim() : null,
-        link_asamblea: linkAsamblea.trim() !== '' ? linkAsamblea.trim() : null
-      }).eq('id', idSindicatoActual);
-
-      if (error) throw error;
-      alert('✅ Configuración y enlace de asamblea guardados exitosamente.');
-    } catch (err: any) {
-      alert('❌ Error al actualizar: ' + err.message);
-    } finally {
-      setGuardandoSindicato(false);
     }
   };
 
@@ -223,23 +205,37 @@ export default function AdminPanel() {
 
       await supabase.from('historial_asambleas').insert([{
         titulo: tituloNuevaAsamblea,
-        link_reunion: linkAsamblea,
         sindicato_id: idSindicatoActual,
         created_by: user.id,
         creador_nombre: adminProfile?.full_name || 'Administrador'
       }]);
 
-      await supabase.from('asambleas_votaciones').insert([{
-        titulo: tituloNuevaAsamblea,
-        estado: 'Abierta',
-        sindicato_id: idSindicatoActual
-      }]);
-
       setTituloNuevaAsamblea('');
       fetchEnterpriseData();
-      alert('✅ Asamblea registrada en el historial y habilitada para QR correctamente.');
+      alert('✅ Asamblea registrada en el historial y habilitada para el escáner QR correctamente.');
     } catch (err: any) {
       alert('Error: ' + err.message);
+    }
+  };
+
+  // 🚨 NUEVA FUNCIÓN: Eliminar una Asamblea del Historial
+  const handleEliminarAsamblea = async (id: number, titulo: string) => {
+    if (!window.confirm(`⚠️ ¿Estás seguro de que deseas eliminar permanentemente el registro de la asamblea "${titulo}"? Esto no se puede deshacer y limpiará tu historial.`)) return;
+
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.from('historial_asambleas').delete().eq('id', id);
+
+      if (error) throw error;
+
+      // Actualizamos la vista quitando el elemento borrado
+      setHistorialAsambleas(historialAsambleas.filter(a => a.id !== id));
+      
+      // Opcional: Si queremos limpiar la tabla asambleas_votaciones asociada
+      await supabase.from('asambleas_votaciones').delete().eq('titulo', titulo).eq('sindicato_id', idSindicatoActual);
+
+    } catch (err: any) {
+      alert('❌ Error al eliminar: ' + err.message);
     }
   };
 
@@ -356,31 +352,25 @@ export default function AdminPanel() {
     }
   };
 
-  // --- NUEVA LÓGICA DE APROBACIÓN DE POSTULANTES CON MANEJO DE ERRORES Y EMAIL ---
   const procesarPostulanteSupabase = async (postulacion: any) => {
     const supabase = createClient();
     const cleanRut = postulacion.rut.replace(/[^0-9kK]/g, '');
     const ultimosDigitos = cleanRut.length > 4 ? cleanRut.slice(-4) : '1234';
     const passwordTemporal = `Pyc${ultimosDigitos}.2026`;
 
-    // 1. Intentar crear el usuario en Auth
     const { data: authData, error: authError } = await supabase.auth.signUp({ 
       email: postulacion.email, 
       password: passwordTemporal 
     });
     
-    // Validar el error 422 (Correo duplicado)
     if (authError) {
       throw new Error(`El correo ${postulacion.email} ya está registrado en el sistema o es inválido.`);
     }
 
-    // Validar el error 400 (No devolvió ID)
     if (!authData?.user) {
       throw new Error('El sistema no pudo generar el identificador del usuario.');
     }
 
-    // 2. Insertar el perfil de forma segura
-    // Usa el rol_solicitado si existe, sino 'socio'
     const rolAAsignar = postulacion.rol_solicitado ? postulacion.rol_solicitado.toLowerCase() : 'socio';
     
     const { error: profileError } = await supabase.from('profiles').upsert({ 
@@ -396,7 +386,6 @@ export default function AdminPanel() {
       throw new Error(`Error al vincular el perfil: ${profileError.message}`);
     }
 
-    // 3. Marcar postulación como aprobada
     await supabase.from('postulaciones').update({ estado: 'Aprobada' }).eq('id', postulacion.id);
     return passwordTemporal; 
   };
@@ -408,7 +397,6 @@ export default function AdminPanel() {
     try {
       const passwordGenerada = await procesarPostulanteSupabase(postulacion);
 
-      // 4. Enviar credenciales (Usando tu ruta local api/send-email)
       try {
         await fetch('/api/send-email', {
           method: 'POST',
@@ -430,13 +418,11 @@ export default function AdminPanel() {
       alert(`✅ ¡Socio aprobado exitosamente! Las credenciales fueron enviadas a ${postulacion.email}.`);
       
     } catch (err: any) { 
-      // Si el correo ya existía (422), atrapará el error aquí y no romperá nada
       alert(`❌ Operación detenida: ${err.message}`); 
     } finally { 
       setProcesandoPostulacion(null); 
     }
   };
-  // --------------------------------------------------------------------------------
 
   const handleRechazarPostulacion = async (id: number) => {
     if (!window.confirm("¿Seguro que deseas rechazar y eliminar esta postulación?")) return;
@@ -454,7 +440,6 @@ export default function AdminPanel() {
     router.push('/');
   };
 
-  // --- NUEVO: Helper para mapeo visual de roles pedido por el profesor ---
   const getRoleNameUI = (rol: string | null | undefined) => {
     const r = String(rol || '').toLowerCase();
     if (r === 'superadmin') return 'Admin';
@@ -491,13 +476,13 @@ export default function AdminPanel() {
   const ticketsRevision = safeTickets.filter(t => t?.estado === 'En Revisión').length;
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] font-sans pb-24 text-slate-900 relative overflow-hidden selection:bg-blue-500 selection:text-white" 
+    <div className="min-h-screen bg-[#f8fafc] font-sans pb-24 md:pb-0 text-slate-900 relative overflow-hidden selection:bg-blue-500 selection:text-white" 
          onClick={() => { if (menuAbiertoId) setMenuAbiertoId(null); if (ticketMenuAbiertoId) setTicketMenuAbiertoId(null); }}>
 
       <div className="flex flex-col md:flex-row h-screen">
 
-        {/* SIDEBAR ADMINISTRADOR LOCAL */}
-        <aside className="w-full md:w-72 bg-gradient-to-b from-[#070b19] via-[#0f172a] to-[#1e293b] text-white flex flex-col shadow-2xl relative z-20 shrink-0 border-r border-white/5">
+        {/* SIDEBAR ADMINISTRADOR LOCAL - OCULTO EN MOBILE */}
+        <aside className="hidden md:flex w-72 bg-gradient-to-b from-[#070b19] via-[#0f172a] to-[#1e293b] text-white flex-col shadow-2xl relative z-20 shrink-0 border-r border-white/5">
           <div className="p-8 border-b border-white/10">
             <div className="flex items-center gap-3.5">
               <div className="w-12 h-12 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-2xl flex items-center justify-center shadow-xl shadow-blue-500/30">
@@ -513,9 +498,6 @@ export default function AdminPanel() {
           <nav className="flex-1 p-6 space-y-2 overflow-y-auto custom-scrollbar">
             <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
               <span className="text-base">📊</span> Resumen Operativo
-            </button>
-            <button onClick={() => setActiveTab('config')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'config' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
-              <span className="text-base">📹</span> Enlace de Asamblea
             </button>
             <button onClick={() => setActiveTab('historial')} className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider transition-all ${activeTab === 'historial' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-400 hover:bg-white/5 hover:text-white'}`}>
               <span className="text-base">📜</span> Historial Pro
@@ -541,105 +523,128 @@ export default function AdminPanel() {
           </div>
         </aside>
 
+        {/* NAVEGACIÓN INFERIOR PARA MOBILE (Bottom Navigation Bar) */}
+        <div className="md:hidden fixed bottom-0 left-0 w-full bg-[#070b19] border-t border-white/10 z-50 px-2 py-3 flex justify-around items-center">
+            <button onClick={() => setActiveTab('dashboard')} className={`flex flex-col items-center p-2 rounded-xl transition-all ${activeTab === 'dashboard' ? 'text-blue-400 bg-blue-500/10' : 'text-slate-400 hover:text-white'}`}>
+              <span className="text-lg">📊</span>
+              <span className="text-[9px] font-bold mt-1">Resumen</span>
+            </button>
+            <button onClick={() => setActiveTab('historial')} className={`flex flex-col items-center p-2 rounded-xl transition-all ${activeTab === 'historial' ? 'text-blue-400 bg-blue-500/10' : 'text-slate-400 hover:text-white'}`}>
+              <span className="text-lg">📜</span>
+              <span className="text-[9px] font-bold mt-1">Historial</span>
+            </button>
+            <button onClick={() => setActiveTab('padron')} className={`flex flex-col items-center p-2 rounded-xl transition-all ${activeTab === 'padron' ? 'text-blue-400 bg-blue-500/10' : 'text-slate-400 hover:text-white'}`}>
+              <span className="text-lg">👥</span>
+              <span className="text-[9px] font-bold mt-1">Padrón</span>
+            </button>
+            
+            {/* Menú "Más" para opciones adicionales en móvil */}
+            <div className="relative">
+              <button onClick={(e) => { e.stopPropagation(); setIsMobileMenuOpen(!isMobileMenuOpen); }} className={`flex flex-col items-center p-2 rounded-xl transition-all ${isMobileMenuOpen || ['soporte', 'comunicaciones'].includes(activeTab) ? 'text-blue-400 bg-blue-500/10' : 'text-slate-400 hover:text-white'}`}>
+                <span className="text-lg">⋮</span>
+                <span className="text-[9px] font-bold mt-1">Más</span>
+              </button>
+
+              {isMobileMenuOpen && (
+                <div className="absolute bottom-16 right-0 w-48 bg-[#1e293b] border border-white/10 rounded-2xl shadow-2xl p-2 animate-in fade-in slide-in-from-bottom-2 z-50">
+                   <button onClick={() => { setActiveTab('soporte'); setIsMobileMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-white hover:bg-white/10 rounded-xl transition-all">
+                     <span>🎧</span> Soporte
+                   </button>
+                   <button onClick={() => { setActiveTab('comunicaciones'); setIsMobileMenuOpen(false); }} className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-white hover:bg-white/10 rounded-xl transition-all">
+                     <span>📢</span> Avisos
+                   </button>
+                   <div className="border-t border-white/10 my-2"></div>
+                   <Link href="/dashboard" className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-300 hover:bg-white/10 rounded-xl transition-all">
+                     <span>⇦</span> Portal Socios
+                   </Link>
+                   <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-sm font-bold text-rose-400 hover:bg-rose-500/20 rounded-xl transition-all">
+                     <span>🚪</span> Salir
+                   </button>
+                </div>
+              )}
+            </div>
+        </div>
+
         {/* CONTENIDO PRINCIPAL */}
-        <main className="flex-1 overflow-y-auto relative p-6 md:p-12">
-          <div className="max-w-7xl mx-auto space-y-8 relative z-10">
+        <main className="flex-1 overflow-y-auto relative p-4 md:p-12 mb-16 md:mb-0">
+          <div className="max-w-7xl mx-auto space-y-6 md:space-y-8 relative z-10">
+
+            {/* HEADER MÓVIL (Solo se ve en teléfonos) */}
+            <div className="md:hidden flex items-center gap-3 mb-6 bg-white p-4 rounded-2xl shadow-sm border border-slate-100">
+               <div className="w-10 h-10 bg-gradient-to-tr from-blue-600 to-indigo-500 rounded-xl flex items-center justify-center shadow-md">
+                 <span className="text-white font-black text-lg">⚡</span>
+               </div>
+               <div>
+                 <h1 className="font-black text-sm text-slate-800 truncate">{editNombreSindicato || 'Sindicato'}</h1>
+                 <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest">Admin Panel</p>
+               </div>
+            </div>
 
             {/* TAB 1: DASHBOARD Y MÉTRICAS */}
             {activeTab === 'dashboard' && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6 md:space-y-8">
                 <header>
-                  <h2 className="text-3xl font-black text-slate-800 tracking-tight">Centro de Mando Operativo</h2>
-                  <p className="text-slate-500 font-medium text-sm mt-1">Estadísticas en tiempo real de tu organización sindical.</p>
+                  <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Centro Operativo</h2>
+                  <p className="text-slate-500 font-medium text-xs md:text-sm mt-1">Estadísticas en tiempo real de tu organización.</p>
                 </header>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
-                  <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
-                    <span className="text-blue-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Total Socios</span>
-                    <span className="text-4xl font-black">{loadingDatos ? '...' : usuarios.length}</span>
+                <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-6">
+                  <div className="bg-white border border-slate-100 p-5 md:p-8 rounded-[2rem] shadow-md hover:shadow-xl transition-all flex flex-col text-slate-800">
+                    <span className="text-blue-600 text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] mb-1 md:mb-2">Socios</span>
+                    <span className="text-2xl md:text-4xl font-black">{loadingDatos ? '...' : usuarios.length}</span>
                   </div>
-                  <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
-                    <span className="text-emerald-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Votos Emitidos</span>
-                    <span className="text-4xl font-black">{loadingDatos ? '...' : totalVotosEmitidos}</span>
+                  <div className="bg-white border border-slate-100 p-5 md:p-8 rounded-[2rem] shadow-md hover:shadow-xl transition-all flex flex-col text-slate-800">
+                    <span className="text-emerald-600 text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] mb-1 md:mb-2">Votos</span>
+                    <span className="text-2xl md:text-4xl font-black">{loadingDatos ? '...' : totalVotosEmitidos}</span>
                   </div>
-                  <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
-                    <span className="text-amber-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Tickets Activos</span>
-                    <span className="text-4xl font-black">{loadingDatos ? '...' : (ticketsPendientes + ticketsRevision)}</span>
+                  <div className="bg-white border border-slate-100 p-5 md:p-8 rounded-[2rem] shadow-md hover:shadow-xl transition-all flex flex-col text-slate-800">
+                    <span className="text-amber-600 text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] mb-1 md:mb-2">Tickets</span>
+                    <span className="text-2xl md:text-4xl font-black">{loadingDatos ? '...' : (ticketsPendientes + ticketsRevision)}</span>
                   </div>
-                  <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
-                    <span className="text-indigo-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Citas Legales</span>
-                    <span className="text-4xl font-black">{loadingDatos ? '...' : citas.length}</span>
+                  <div className="bg-white border border-slate-100 p-5 md:p-8 rounded-[2rem] shadow-md hover:shadow-xl transition-all flex flex-col text-slate-800">
+                    <span className="text-indigo-600 text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] mb-1 md:mb-2">Citas</span>
+                    <span className="text-2xl md:text-4xl font-black">{loadingDatos ? '...' : citas.length}</span>
                   </div>
-                  <div className="bg-white border border-slate-100 p-8 rounded-[2.5rem] shadow-xl shadow-slate-200/50 flex flex-col text-slate-800">
-                    <span className="text-rose-600 text-[10px] font-black uppercase tracking-[0.2em] mb-2">Fondo Solidario</span>
-                    <span className="text-3xl font-black">${loadingDatos ? '...' : fondoRecaudado.toLocaleString('es-CL')}</span>
+                  <div className="col-span-2 lg:col-span-1 bg-white border border-slate-100 p-5 md:p-8 rounded-[2rem] shadow-md hover:shadow-xl transition-all flex flex-col text-slate-800">
+                    <span className="text-rose-600 text-[9px] md:text-[10px] font-black uppercase tracking-[0.2em] mb-1 md:mb-2">Fondo</span>
+                    <span className="text-2xl md:text-3xl font-black">${loadingDatos ? '...' : fondoRecaudado.toLocaleString('es-CL')}</span>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* TAB: CONFIGURAR ENLACE DE ASAMBLEA */}
-            {activeTab === 'config' && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-2xl space-y-6">
-                <header>
-                  <h2 className="text-3xl font-black text-slate-800 tracking-tight">Gestión de Asamblea Virtual</h2>
-                  <p className="text-slate-500 font-medium text-sm mt-1">Configura el enlace oficial de Google Meet, Zoom o Teams para los socios.</p>
-                </header>
-
-                <form onSubmit={guardarCambiosSindicato} className="bg-white p-8 sm:p-10 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 space-y-6">
-                  <div>
-                    <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Enlace de Videollamada (Meet / Zoom / Teams)</label>
-                    <input 
-                      type="url" 
-                      value={linkAsamblea} 
-                      onChange={e => setLinkAsamblea(e.target.value)} 
-                      placeholder="https://meet.google.com/abc-defg-hij" 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 transition-all" 
-                    />
-                    <p className="text-xs text-slate-400 mt-2.5 leading-relaxed">Los socios que escaneen el código QR o entren a la sala de asamblea serán redirigidos automáticamente a este enlace.</p>
-                  </div>
-
-                  <button type="submit" disabled={guardandoSindicato} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-blue-600/30 transition-all">
-                    {guardandoSindicato ? 'Guardando...' : 'Guardar Enlace Oficial'}
-                  </button>
-                </form>
-              </div>
-            )}
-
             {/* TAB: HISTORIAL PRO DE ASAMBLEAS Y AUDITORÍA EN TIEMPO REAL */}
             {activeTab === 'historial' && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6 md:space-y-8">
                 <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
-                    <h2 className="text-3xl font-black text-slate-800 tracking-tight">Historial Pro de Asambleas</h2>
-                    <p className="text-slate-500 font-medium text-sm mt-1">Auditoría formal de sesiones, creadores y concurrencia de socios en tiempo real.</p>
+                    <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Historial Pro</h2>
+                    <p className="text-slate-500 font-medium text-xs md:text-sm mt-1">Auditoría de sesiones y concurrencia en tiempo real.</p>
                   </div>
                 </header>
 
-                {/* Formulario para registrar asamblea */}
-                <form onSubmit={handleCrearAsambleaHistorica} className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-xl shadow-slate-200/50 space-y-4">
-                  <h3 className="text-lg font-black text-slate-800">Registrar Nueva Asamblea en el Historial</h3>
-                  <div className="flex flex-col sm:flex-row gap-4">
+                <form onSubmit={handleCrearAsambleaHistorica} className="bg-white p-5 md:p-8 rounded-[2rem] border border-slate-100 shadow-md space-y-4">
+                  <h3 className="text-sm md:text-lg font-black text-slate-800">Nueva Asamblea</h3>
+                  <div className="flex flex-col sm:flex-row gap-3 md:gap-4">
                     <input 
                       type="text" 
                       required 
                       value={tituloNuevaAsamblea} 
                       onChange={e => setTituloNuevaAsamblea(e.target.value)} 
-                      placeholder="Ej: Asamblea Ordinaria de Negociación - Octubre 2026" 
-                      className="flex-1 bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 transition-all" 
+                      placeholder="Ej: Asamblea Ordinaria..." 
+                      className="flex-1 bg-slate-50 border border-slate-200 rounded-xl md:rounded-2xl px-4 py-3 md:py-4 text-xs md:text-sm font-bold text-slate-800 outline-none focus:border-blue-500 transition-all" 
                     />
-                    <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white font-black px-8 py-4 rounded-2xl text-xs uppercase tracking-widest shadow-lg shadow-blue-600/30 transition-all shrink-0">
+                    <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white font-black px-6 md:px-8 py-3.5 md:py-4 rounded-xl md:rounded-2xl text-[10px] md:text-xs uppercase tracking-widest shadow-lg shadow-blue-600/30 transition-all shrink-0">
                       Registrar Sesión
                     </button>
                   </div>
                 </form>
 
-                {/* Listado de Asambleas con Auditoría Completa en Tiempo Real */}
-                <div className="space-y-6">
+                <div className="space-y-4 md:space-y-6">
                   {historialAsambleas.length === 0 ? (
-                    <div className="bg-white p-12 rounded-[2.5rem] text-center border border-slate-100 shadow-xl">
+                    <div className="bg-white p-8 md:p-12 rounded-[2.5rem] text-center border border-slate-100 shadow-sm">
                       <span className="text-4xl block mb-2 opacity-40">📂</span>
-                      <p className="text-slate-400 font-bold text-sm">No hay asambleas registradas en el historial aún.</p>
+                      <p className="text-slate-400 font-bold text-xs md:text-sm">No hay asambleas registradas.</p>
                     </div>
                   ) : (
                     historialAsambleas.map((asam) => {
@@ -655,60 +660,69 @@ export default function AdminPanel() {
                       });
 
                       return (
-                        <div key={asam.id} className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/50 space-y-6">
+                        <div key={asam.id} className="bg-white border border-slate-100 rounded-[2rem] md:rounded-[2.5rem] p-5 md:p-8 shadow-md space-y-4 md:space-y-6">
                           
-                          {/* Cabecera de la tarjeta */}
-                          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-5">
+                          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-100 pb-4 md:pb-5">
                             <div>
                               <div className="flex items-center gap-2 mb-1">
-                                <span className="px-3.5 py-1 bg-blue-50 text-blue-600 rounded-full text-[10px] font-black uppercase tracking-wider border border-blue-100">
-                                  📅 {fechaCreacion} a las {horaCreacion} hrs
+                                <span className="px-2.5 md:px-3.5 py-1 bg-blue-50 text-blue-600 rounded-full text-[9px] md:text-[10px] font-black uppercase tracking-wider border border-blue-100">
+                                  📅 {fechaCreacion}
                                 </span>
                               </div>
-                              <h3 className="text-2xl font-black text-slate-800 mt-1">{asam.titulo}</h3>
+                              <h3 className="text-lg md:text-2xl font-black text-slate-800 mt-1 leading-tight">{asam.titulo}</h3>
                             </div>
-                            <span className="px-5 py-2.5 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-2xl text-xs font-black shadow-sm flex items-center gap-2">
-                              👥 {asistentesEstaAsamblea.length} Socio(s) Concurrente(s)
-                            </span>
+                            
+                            {/* CONTROLES ASAMBLEA */}
+                            <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto justify-between md:justify-end mt-2 md:mt-0">
+                              <span className="px-3 md:px-5 py-2 md:py-2.5 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded-xl md:rounded-2xl text-[10px] md:text-xs font-black shadow-sm flex items-center gap-1.5 md:gap-2">
+                                👥 {asistentesEstaAsamblea.length} <span className="hidden md:inline">Socio(s)</span>
+                              </span>
+                              <button 
+                                onClick={() => handleEliminarAsamblea(asam.id, asam.titulo)}
+                                className="p-2 md:p-2.5 text-rose-500 hover:text-white hover:bg-rose-500 bg-rose-50 border border-rose-100 rounded-xl transition-all shadow-sm"
+                                title="Eliminar registro"
+                              >
+                                🗑️
+                              </button>
+                            </div>
                           </div>
 
-                          {/* Detalle del Creador (Auditoría) */}
-                          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-4">
-                            <div className="w-11 h-11 bg-gradient-to-tr from-indigo-600 to-violet-500 text-white rounded-2xl flex items-center justify-center font-black text-sm shadow-md shrink-0">
-                              🛡️
-                            </div>
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Creado y autorizado por</p>
-                              <p className="text-sm font-black text-slate-800">{asam.creador_nombre || 'Administrador del Sindicato'}</p>
-                            </div>
-                          </div>
-
-                          {/* Listado de Socios que interactuaron */}
                           <div>
-                            <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">Socios que ingresaron / interactuaron:</h4>
+                            <h4 className="text-[10px] md:text-xs font-black text-slate-400 uppercase tracking-widest mb-2 md:mb-3">Socios registrados:</h4>
                             {asistentesEstaAsamblea.length === 0 ? (
-                              <p className="text-xs text-slate-400 italic bg-amber-50/50 p-4 rounded-2xl border border-amber-100 text-amber-700">
-                                ⚠️ Ningún socio ha registrado asistencia todavía para esta sesión específica.
+                              <p className="text-[10px] md:text-xs text-slate-400 italic bg-amber-50/50 p-3 md:p-4 rounded-xl md:rounded-2xl border border-amber-100 text-amber-700">
+                                ⚠️ Ningún socio ha registrado asistencia.
                               </p>
                             ) : (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 md:gap-3">
                                 {asistentesEstaAsamblea.map((asist) => {
-                                  // Hacemos el cruce con los usuarios del padrón para obtener el nombre
-                                  const perfilSocio = usuarios.find(u => u.rut === asist.usuario_rut);
-                                  const nombreSocio = perfilSocio?.full_name || 'Socio Sindicato';
+                                  const nombreSocio = asist.profiles?.full_name || usuarios.find(u => u.rut === asist.usuario_rut)?.full_name || 'Socio Sindicato';
 
-                                  const horaIngreso = new Date(asist.fecha_asistencia || asist.created_at).toLocaleTimeString('es-CL', {
+                                  const horaIngreso = asist.hora_entrada ? new Date(asist.hora_entrada).toLocaleTimeString('es-CL', {
                                     hour: '2-digit', minute: '2-digit'
-                                  });
+                                  }) : '--:--';
+
+                                  const horaSalida = asist.hora_salida ? new Date(asist.hora_salida).toLocaleTimeString('es-CL', {
+                                    hour: '2-digit', minute: '2-digit'
+                                  }) : null;
+
                                   return (
-                                    <div key={asist.id} className="p-4 bg-slate-50/80 rounded-2xl border border-slate-100 flex flex-col justify-between space-y-2">
+                                    <div key={asist.id} className="p-3 md:p-4 bg-slate-50/80 rounded-xl md:rounded-2xl border border-slate-100 flex flex-col justify-between space-y-2">
                                       <div>
-                                        <span className="text-xs font-black text-slate-800 block truncate">{nombreSocio}</span>
-                                        <span className="text-[11px] text-slate-500 font-bold mt-0.5">{asist.usuario_rut || 'Sin RUT'}</span>
+                                        <span className="text-[11px] md:text-xs font-black text-slate-800 block truncate">{nombreSocio}</span>
+                                        <span className="text-[9px] md:text-[11px] text-slate-500 font-bold mt-0.5">{asist.usuario_rut || 'Sin RUT'}</span>
                                       </div>
-                                      <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[10px]">
-                                        <span className="text-slate-400 font-bold uppercase">Ingreso:</span>
-                                        <span className="font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">{horaIngreso} hrs</span>
+                                      <div className="pt-2 border-t border-slate-200/60 flex flex-col gap-1 text-[9px] md:text-[10px]">
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-slate-400 font-bold uppercase">Entrada:</span>
+                                          <span className="font-black text-emerald-600 bg-emerald-50 px-1.5 md:px-2 py-0.5 rounded-md">{horaIngreso}</span>
+                                        </div>
+                                        {horaSalida && (
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-slate-400 font-bold uppercase">Salida:</span>
+                                            <span className="font-black text-purple-600 bg-purple-50 px-1.5 md:px-2 py-0.5 rounded-md">{horaSalida}</span>
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   );
@@ -727,47 +741,43 @@ export default function AdminPanel() {
 
             {/* TAB: PADRÓN Y POSTULANTES */}
             {activeTab === 'padron' && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6 md:space-y-8">
                 <header>
-                  <h2 className="text-3xl font-black text-slate-800 tracking-tight">Gestión del Padrón</h2>
-                  <p className="text-slate-500 font-medium text-sm mt-1">Aprueba nuevos ingresos y administra las cuentas exclusivas de tu organización.</p>
+                  <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Gestión del Padrón</h2>
+                  <p className="text-slate-500 font-medium text-xs md:text-sm mt-1">Administra las cuentas exclusivas de tu organización.</p>
                 </header>
 
-                <section className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden">
-                  <div className="p-8 border-b border-slate-100 bg-rose-50/40 flex justify-between items-center">
-                    <div>
-                      <h3 className="text-xl font-black text-slate-800">📥 Bandeja de Postulaciones</h3>
-                      <p className="text-sm text-slate-500 mt-1">{postulaciones.length} solicitudes pendientes.</p>
-                    </div>
+                <section className="bg-white border border-slate-100 rounded-[2rem] md:rounded-[2.5rem] shadow-md overflow-hidden">
+                  <div className="p-5 md:p-8 border-b border-slate-100 bg-rose-50/40">
+                    <h3 className="text-lg md:text-xl font-black text-slate-800">📥 Postulaciones</h3>
+                    <p className="text-xs md:text-sm text-slate-500 mt-1">{postulaciones.length} pendientes.</p>
                   </div>
-                  <div className="p-2 overflow-x-auto">
-                    <table className="w-full text-left border-collapse min-w-[800px]">
+                  <div className="p-2 overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left border-collapse min-w-[600px] md:min-w-[800px]">
                       <thead>
-                        <tr className="text-slate-400 text-[10px] font-black uppercase tracking-[0.15em] border-b border-slate-100">
-                          <th className="p-5 pl-8">Postulante</th>
-                          <th className="p-5">RUT</th>
-                          <th className="p-5">Correo</th>
-                          <th className="p-5 pr-8 text-right">Acción</th>
+                        <tr className="text-slate-400 text-[9px] md:text-[10px] font-black uppercase tracking-[0.15em] border-b border-slate-100">
+                          <th className="p-4 md:p-5 pl-4 md:pl-8">Postulante</th>
+                          <th className="p-4 md:p-5">RUT</th>
+                          <th className="p-4 md:p-5 pr-4 md:pr-8 text-right">Acción</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
                         {postulaciones.length === 0 ? (
-                          <tr><td colSpan={4} className="p-10 text-center text-slate-400 text-sm font-medium">Bandeja vacía.</td></tr>
+                          <tr><td colSpan={3} className="p-8 text-center text-slate-400 text-xs md:text-sm font-medium">Bandeja vacía.</td></tr>
                         ) : (
                           postulaciones.map((post) => (
                             <tr key={post.id} className="hover:bg-rose-50/20 transition-colors">
-                              <td className="p-5 pl-8">
-                                <span className="font-extrabold text-slate-800 text-sm block">{post.full_name}</span>
-                                <span className="text-[10px] font-black uppercase text-amber-500 tracking-wider">
-                                  Solicita rol: {getRoleNameUI(post.rol_solicitado)}
+                              <td className="p-4 md:p-5 pl-4 md:pl-8">
+                                <span className="font-extrabold text-slate-800 text-xs md:text-sm block">{post.full_name}</span>
+                                <span className="text-[9px] md:text-[10px] font-black uppercase text-amber-500 tracking-wider">
+                                  {getRoleNameUI(post.rol_solicitado)}
                                 </span>
                               </td>
-                              <td className="p-5 text-sm font-bold text-slate-500">{post.rut}</td>
-                              <td className="p-5 text-sm font-medium text-slate-600">{post.email}</td>
-                              <td className="p-5 pr-8 text-right flex justify-end gap-2">
-                                <button onClick={() => handleRechazarPostulacion(post.id)} className="text-xs font-bold text-slate-400 hover:text-red-600 px-3 py-2 rounded-lg transition-colors">Rechazar</button>
-                                <button onClick={() => handleAprobarPostulacion(post)} disabled={procesandoPostulacion === post.id} className="bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black uppercase tracking-wider px-4 py-2.5 rounded-xl shadow-md transition-all">
-                                  {procesandoPostulacion === post.id ? 'Aprobando...' : 'Aprobar'}
+                              <td className="p-4 md:p-5 text-xs md:text-sm font-bold text-slate-500">{post.rut}</td>
+                              <td className="p-4 md:p-5 pr-4 md:pr-8 text-right flex justify-end gap-2">
+                                <button onClick={() => handleRechazarPostulacion(post.id)} className="text-[10px] md:text-xs font-bold text-slate-400 hover:text-red-600 px-2 py-2 rounded-lg transition-colors">Rechazar</button>
+                                <button onClick={() => handleAprobarPostulacion(post)} disabled={procesandoPostulacion === post.id} className="bg-emerald-500 hover:bg-emerald-600 text-white text-[9px] md:text-[10px] font-black uppercase tracking-wider px-3 md:px-4 py-2 md:py-2.5 rounded-xl shadow-md transition-all">
+                                  {procesandoPostulacion === post.id ? '...' : 'Aprobar'}
                                 </button>
                               </td>
                             </tr>
@@ -778,54 +788,49 @@ export default function AdminPanel() {
                   </div>
                 </section>
 
-                <section className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden">
-                  <div className="p-8 border-b border-slate-100 bg-slate-50/50">
-                    <h3 className="text-xl font-black text-slate-800">🛡️ Cuentas Activas de la Organización</h3>
+                <section className="bg-white border border-slate-100 rounded-[2rem] md:rounded-[2.5rem] shadow-md overflow-hidden">
+                  <div className="p-5 md:p-8 border-b border-slate-100 bg-slate-50/50">
+                    <h3 className="text-lg md:text-xl font-black text-slate-800">🛡️ Cuentas Activas</h3>
                   </div>
-                  <div className="p-2 overflow-x-auto">
-                    <table className="w-full text-left border-collapse min-w-[800px]">
+                  <div className="p-2 overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left border-collapse min-w-[600px] md:min-w-[800px]">
                       <thead>
-                        <tr className="text-slate-400 text-[10px] font-black uppercase tracking-[0.15em] border-b border-slate-100">
-                          <th className="p-5 pl-8">Socio</th>
-                          <th className="p-5">RUT / Correo</th>
-                          <th className="p-5">Rol</th>
-                          <th className="p-5 pr-8 text-right">Opciones</th>
+                        <tr className="text-slate-400 text-[9px] md:text-[10px] font-black uppercase tracking-[0.15em] border-b border-slate-100">
+                          <th className="p-4 md:p-5 pl-4 md:pl-8">Socio</th>
+                          <th className="p-4 md:p-5">RUT</th>
+                          <th className="p-4 md:p-5">Rol</th>
+                          <th className="p-4 md:p-5 pr-4 md:pr-8 text-right">Opciones</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
-                        {usuarios.map((user) => {
-                          return (
-                            <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                              <td className="p-5 pl-8 font-extrabold text-slate-800 text-sm">{user.full_name || 'Sin nombre'}</td>
-                              <td className="p-5 text-xs text-slate-500">
-                                <span className="block font-bold text-slate-700">{user.rut}</span>
-                                {user.email}
-                              </td>
-                              <td className="p-5">
-                                <span className={`px-3.5 py-1.5 text-[9px] font-black uppercase rounded-full border 
-                                  ${String(user.role).toLowerCase() === 'superadmin' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
-                                    ['admin', 'administrador'].includes(String(user.role).toLowerCase()) ? 'bg-amber-50 text-amber-600 border-amber-200' : 
-                                    'bg-slate-100 text-slate-500 border-slate-200'}`}>
-                                  {getRoleNameUI(user.role)}
-                                </span>
-                              </td>
-                              <td className="p-5 pr-8 text-right relative">
-                                <button onClick={(e) => { e.stopPropagation(); setMenuAbiertoId(menuAbiertoId === user.id ? null : user.id); }} className="w-10 h-10 inline-flex items-center justify-center rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
-                                  ⋮
-                                </button>
-                                {menuAbiertoId === user.id && (
-                                  <div className="absolute right-12 top-10 w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden z-50 text-left animate-in fade-in zoom-in-95" onClick={e => e.stopPropagation()}>
-                                    <div className="p-2 space-y-1">
-                                      <button onClick={() => { handleEditarUsuario(user); setMenuAbiertoId(null); }} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl">✏️ Editar Perfil</button>
-                                      <button onClick={() => { handleCambiarRol(user); setMenuAbiertoId(null); }} className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl">🔄 Cambiar Rol</button>
-                                      <button onClick={() => { handleEliminarUsuario(user); setMenuAbiertoId(null); }} className="w-full text-left px-4 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl">🗑️ Eliminar</button>
-                                    </div>
+                        {usuarios.map((user) => (
+                          <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="p-4 md:p-5 pl-4 md:pl-8 font-extrabold text-slate-800 text-xs md:text-sm">{user.full_name || 'Sin nombre'}</td>
+                            <td className="p-4 md:p-5 text-[10px] md:text-xs text-slate-500 font-bold">{user.rut}</td>
+                            <td className="p-4 md:p-5">
+                              <span className={`px-2.5 md:px-3.5 py-1 md:py-1.5 text-[8px] md:text-[9px] font-black uppercase rounded-full border 
+                                ${String(user.role).toLowerCase() === 'superadmin' ? 'bg-purple-50 text-purple-600 border-purple-200' : 
+                                  ['admin', 'administrador'].includes(String(user.role).toLowerCase()) ? 'bg-amber-50 text-amber-600 border-amber-200' : 
+                                  'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                                {getRoleNameUI(user.role)}
+                              </span>
+                            </td>
+                            <td className="p-4 md:p-5 pr-4 md:pr-8 text-right relative">
+                              <button onClick={(e) => { e.stopPropagation(); setMenuAbiertoId(menuAbiertoId === user.id ? null : user.id); }} className="w-8 h-8 md:w-10 md:h-10 inline-flex items-center justify-center rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors">
+                                ⋮
+                              </button>
+                              {menuAbiertoId === user.id && (
+                                <div className="absolute right-10 top-8 w-40 md:w-48 bg-white border border-slate-200 shadow-2xl rounded-2xl overflow-hidden z-50 text-left animate-in fade-in zoom-in-95" onClick={e => e.stopPropagation()}>
+                                  <div className="p-2 space-y-1">
+                                    <button onClick={() => { handleEditarUsuario(user); setMenuAbiertoId(null); }} className="w-full text-left px-3 md:px-4 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl">✏️ Editar Perfil</button>
+                                    <button onClick={() => { handleCambiarRol(user); setMenuAbiertoId(null); }} className="w-full text-left px-3 md:px-4 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl">🔄 Cambiar Rol</button>
+                                    <button onClick={() => { handleEliminarUsuario(user); setMenuAbiertoId(null); }} className="w-full text-left px-3 md:px-4 py-2 md:py-2.5 text-[10px] md:text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl">🗑️ Eliminar</button>
                                   </div>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -835,44 +840,43 @@ export default function AdminPanel() {
 
             {/* TAB: SOPORTE Y LEGAL */}
             {activeTab === 'soporte' && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6 md:space-y-8">
                 <header>
-                  <h2 className="text-3xl font-black text-slate-800 tracking-tight">Soporte y Atención</h2>
+                  <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Soporte y Atención</h2>
                 </header>
 
-                <section className="bg-white border border-slate-100 rounded-[2.5rem] shadow-xl shadow-slate-200/50 overflow-hidden">
-                  <div className="p-8 border-b border-slate-100 bg-amber-50/40">
-                    <h3 className="text-xl font-black text-slate-800">🎧 Tickets de Soporte</h3>
+                <section className="bg-white border border-slate-100 rounded-[2rem] md:rounded-[2.5rem] shadow-md overflow-hidden">
+                  <div className="p-5 md:p-8 border-b border-slate-100 bg-amber-50/40">
+                    <h3 className="text-lg md:text-xl font-black text-slate-800">🎧 Tickets</h3>
                   </div>
-                  <div className="p-2 overflow-x-auto">
-                    <table className="w-full text-left border-collapse min-w-[900px]">
+                  <div className="p-2 overflow-x-auto custom-scrollbar">
+                    <table className="w-full text-left border-collapse min-w-[600px] md:min-w-[900px]">
                       <thead>
-                        <tr className="text-slate-400 text-[10px] font-black uppercase tracking-[0.15em] border-b border-slate-100">
-                          <th className="p-5 pl-8">Requerimiento</th>
-                          <th className="p-5">Solicitante</th>
-                          <th className="p-5">Estado</th>
-                          <th className="p-5 pr-8 text-right">Opciones</th>
+                        <tr className="text-slate-400 text-[9px] md:text-[10px] font-black uppercase tracking-[0.15em] border-b border-slate-100">
+                          <th className="p-4 md:p-5 pl-4 md:pl-8">Requerimiento</th>
+                          <th className="p-4 md:p-5">Solicitante</th>
+                          <th className="p-4 md:p-5">Estado</th>
+                          <th className="p-4 md:p-5 pr-4 md:pr-8 text-right">Opciones</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-50">
                         {tickets.map((ticket) => (
                           <tr key={ticket.id} className="hover:bg-amber-50/20 transition-colors">
-                            <td className="p-5 pl-8">
-                              <p className="font-extrabold text-slate-800 text-sm">{ticket.asunto}</p>
-                              <p className="text-[10px] text-slate-400 mt-1">{new Date(ticket.created_at).toLocaleDateString()}</p>
+                            <td className="p-4 md:p-5 pl-4 md:pl-8">
+                              <p className="font-extrabold text-slate-800 text-xs md:text-sm">{ticket.asunto}</p>
+                              <p className="text-[9px] md:text-[10px] text-slate-400 mt-1">{new Date(ticket.created_at).toLocaleDateString()}</p>
                             </td>
-                            <td className="p-5 text-xs text-slate-500">
-                              <span className="block font-bold text-slate-800">{ticket.nombre || 'Anónimo'}</span>
-                              {ticket.rut}
+                            <td className="p-4 md:p-5 text-[10px] md:text-xs text-slate-500 font-bold">
+                              {ticket.nombre || 'Anónimo'}
                             </td>
-                            <td className="p-5">
-                              <span className={`px-3.5 py-1.5 text-[9px] font-black uppercase rounded-full border ${ticket.estado === 'Resuelto' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                            <td className="p-4 md:p-5">
+                              <span className={`px-2.5 md:px-3.5 py-1 md:py-1.5 text-[8px] md:text-[9px] font-black uppercase rounded-full border ${ticket.estado === 'Resuelto' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
                                 {ticket.estado}
                               </span>
                             </td>
-                            <td className="p-5 pr-8 text-right">
+                            <td className="p-4 md:p-5 pr-4 md:pr-8 text-right">
                               {ticket.estado !== 'Resuelto' && (
-                                <button onClick={() => abrirModalResolucion(ticket)} className="text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-xl transition-all">Resolver ✓</button>
+                                <button onClick={() => abrirModalResolucion(ticket)} className="text-[10px] md:text-xs font-bold text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-3 md:px-4 py-1.5 md:py-2 rounded-lg md:rounded-xl transition-all">Resolver ✓</button>
                               )}
                             </td>
                           </tr>
@@ -886,37 +890,34 @@ export default function AdminPanel() {
 
             {/* TAB: COMUNICACIONES */}
             {activeTab === 'comunicaciones' && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-8">
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6 md:space-y-8">
                 <header>
-                  <h2 className="text-3xl font-black text-slate-800 tracking-tight">Comunicación Oficial</h2>
+                  <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Comunicación Oficial</h2>
                 </header>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                  <section className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/50">
-                    <h3 className="text-xl font-black text-slate-800 mb-6">📢 Avisos y Comunicados</h3>
-                    <form onSubmit={handlePublicarNoticia} className="space-y-5">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-8">
+                  <section className="bg-white border border-slate-100 rounded-[2rem] md:rounded-[2.5rem] p-6 md:p-8 shadow-md">
+                    <h3 className="text-lg md:text-xl font-black text-slate-800 mb-4 md:mb-6">📢 Nuevo Aviso</h3>
+                    <form onSubmit={handlePublicarNoticia} className="space-y-4 md:space-y-5">
                       <div>
-                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Título</label>
-                        <input type="text" required value={tituloNoticia} onChange={e => setTituloNoticia(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                        <input type="text" required placeholder="Título..." value={tituloNoticia} onChange={e => setTituloNoticia(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl md:rounded-2xl px-4 md:px-5 py-3 md:py-3.5 text-xs md:text-sm outline-none focus:ring-2 focus:ring-blue-500" />
                       </div>
                       <div>
-                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Mensaje</label>
-                        <textarea required rows={4} value={contenidoNoticia} onChange={e => setContenidoNoticia(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm outline-none resize-none focus:ring-2 focus:ring-blue-500" />
+                        <textarea required rows={3} placeholder="Escribe el mensaje..." value={contenidoNoticia} onChange={e => setContenidoNoticia(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl md:rounded-2xl px-4 md:px-5 py-3 md:py-3.5 text-xs md:text-sm outline-none resize-none focus:ring-2 focus:ring-blue-500" />
                       </div>
-                      <button type="submit" disabled={loadingNoticia} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-4 rounded-2xl transition-all text-xs uppercase tracking-widest shadow-lg">
+                      <button type="submit" disabled={loadingNoticia} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black py-3 md:py-4 rounded-xl md:rounded-2xl transition-all text-[10px] md:text-xs uppercase tracking-widest shadow-md">
                         {loadingNoticia ? 'Publicando...' : 'Publicar y Notificar'}
                       </button>
                     </form>
                   </section>
 
-                  <section className="bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-200/50">
-                    <h3 className="text-xl font-black text-slate-800 mb-6">🗳️ Apertura de Votaciones</h3>
-                    <form onSubmit={handleAbrirAsamblea} className="space-y-5">
+                  <section className="bg-white border border-slate-100 rounded-[2rem] md:rounded-[2.5rem] p-6 md:p-8 shadow-md">
+                    <h3 className="text-lg md:text-xl font-black text-slate-800 mb-4 md:mb-6">🗳️ Abrir Votación</h3>
+                    <form onSubmit={handleAbrirAsamblea} className="space-y-4 md:space-y-5">
                       <div>
-                        <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Materia a Votar</label>
-                        <input type="text" required value={tituloAsamblea} onChange={e => setTituloAsamblea(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-sm outline-none focus:ring-2 focus:ring-amber-500" />
+                        <input type="text" required placeholder="Materia a votar..." value={tituloAsamblea} onChange={e => setTituloAsamblea(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl md:rounded-2xl px-4 md:px-5 py-3 md:py-3.5 text-xs md:text-sm outline-none focus:ring-2 focus:ring-amber-500" />
                       </div>
-                      <button type="submit" disabled={loadingAsamblea} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-4 rounded-2xl transition-all text-xs uppercase tracking-widest shadow-lg">
+                      <button type="submit" disabled={loadingAsamblea} className="w-full bg-slate-900 hover:bg-slate-800 text-white font-black py-3 md:py-4 rounded-xl md:rounded-2xl transition-all text-[10px] md:text-xs uppercase tracking-widest shadow-md">
                         {loadingAsamblea ? 'Abriendo...' : 'Abrir Votación'}
                       </button>
                     </form>
@@ -931,27 +932,27 @@ export default function AdminPanel() {
 
       {/* MODAL DE RESOLUCIÓN DE TICKETS */}
       {ticketSeleccionado && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setTicketSeleccionado(null)}>
-          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-200 p-8 space-y-6" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-              <h3 className="text-xl font-black text-slate-800">Resolver Ticket</h3>
-              <button onClick={() => setTicketSeleccionado(null)} className="font-bold text-slate-400 hover:text-slate-600">✕</button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setTicketSeleccionado(null)}>
+          <div className="bg-white rounded-[2rem] md:rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-200 p-6 md:p-8 space-y-4 md:space-y-6" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3 md:pb-4">
+              <h3 className="text-lg md:text-xl font-black text-slate-800">Resolver Ticket</h3>
+              <button onClick={() => setTicketSeleccionado(null)} className="font-bold text-slate-400 hover:text-slate-600 text-lg">✕</button>
             </div>
             <div className="space-y-4">
-              <p className="text-xs font-bold text-slate-600 bg-slate-50 p-4 rounded-2xl border border-slate-100">{ticketSeleccionado.asunto}</p>
+              <p className="text-[10px] md:text-xs font-bold text-slate-600 bg-slate-50 p-3 md:p-4 rounded-xl md:rounded-2xl border border-slate-100">{ticketSeleccionado.asunto}</p>
               <textarea 
                 rows={4} 
                 value={detalleResolucion} 
                 onChange={e => setDetalleResolucion(e.target.value)} 
-                placeholder="Escribe el detalle de resolución..." 
-                className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-4 text-sm font-bold outline-none focus:border-blue-500"
+                placeholder="Detalle de resolución..." 
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl md:rounded-2xl p-3 md:p-4 text-xs md:text-sm font-bold outline-none focus:border-blue-500"
               />
               <button 
                 onClick={confirmarResolucionTicket} 
                 disabled={procesandoTicket} 
-                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl text-xs uppercase tracking-widest shadow-lg transition-all"
+                className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-3 md:py-4 rounded-xl md:rounded-2xl text-[10px] md:text-xs uppercase tracking-widest shadow-lg transition-all"
               >
-                {procesandoTicket ? 'Procesando...' : 'Marcar como Resuelto ✓'}
+                {procesandoTicket ? 'Procesando...' : 'Marcar Resuelto ✓'}
               </button>
             </div>
           </div>
@@ -960,17 +961,17 @@ export default function AdminPanel() {
 
       {/* MODAL DE EDICIÓN DE PERFIL */}
       {usuarioEnEdicion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setUsuarioEnEdicion(null)}>
-          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-200 p-8 space-y-6" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
-              <h3 className="text-xl font-black text-slate-800">Editar Perfil</h3>
-              <button onClick={() => setUsuarioEnEdicion(null)} className="font-bold text-slate-400 hover:text-slate-600">✕</button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4" onClick={() => setUsuarioEnEdicion(null)}>
+          <div className="bg-white rounded-[2rem] md:rounded-[2.5rem] shadow-2xl w-full max-w-md border border-slate-200 p-6 md:p-8 space-y-4 md:space-y-6" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3 md:pb-4">
+              <h3 className="text-lg md:text-xl font-black text-slate-800">Editar Perfil</h3>
+              <button onClick={() => setUsuarioEnEdicion(null)} className="font-bold text-slate-400 hover:text-slate-600 text-lg">✕</button>
             </div>
-            <form onSubmit={guardarEdicionUsuario} className="space-y-4">
-              <input type="text" value={editNombre} onChange={e => setEditNombre(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 text-sm font-bold" placeholder="Nombre" />
-              <input type="text" value={editRut} onChange={e => setEditRut(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 text-sm font-bold" placeholder="RUT" />
-              <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 text-sm font-bold" placeholder="Email" />
-              <button type="submit" disabled={guardandoUsuario} className="w-full bg-blue-600 text-white font-black py-3.5 rounded-xl text-xs uppercase tracking-widest shadow-lg">{guardandoUsuario ? 'Guardando...' : 'Guardar Perfil'}</button>
+            <form onSubmit={guardarEdicionUsuario} className="space-y-3 md:space-y-4">
+              <input type="text" value={editNombre} onChange={e => setEditNombre(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 md:py-3 text-xs md:text-sm font-bold" placeholder="Nombre" />
+              <input type="text" value={editRut} onChange={e => setEditRut(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 md:py-3 text-xs md:text-sm font-bold" placeholder="RUT" />
+              <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 md:py-3 text-xs md:text-sm font-bold" placeholder="Email" />
+              <button type="submit" disabled={guardandoUsuario} className="w-full bg-blue-600 text-white font-black py-3 md:py-3.5 rounded-xl text-[10px] md:text-xs uppercase tracking-widest shadow-lg mt-2">{guardandoUsuario ? 'Guardando...' : 'Guardar Perfil'}</button>
             </form>
           </div>
         </div>
