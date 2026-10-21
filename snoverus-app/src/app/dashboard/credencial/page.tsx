@@ -3,16 +3,17 @@
 import React, { useEffect, useState } from 'react';
 import { createClient } from '../../lib/supabase';
 import { useRouter } from 'next/navigation';
-import { QRCodeCanvas } from 'qrcode.react'; // Importamos el componente de QR
+import { QRCodeCanvas } from 'qrcode.react';
 
 export default function CredencialPage() {
   const [isMounted, setIsMounted] = useState(false);
   const router = useRouter();
   const [eliminando, setEliminando] = useState(false);
 
-  // Datos del socio
+  // Datos del socio (¡Agregamos el sindicato_id aquí!)
   const [socio, setSocio] = useState({
-    id: "", // Agregamos el ID para usarlo en el escáner
+    id: "", 
+    sindicato_id: null as number | null, // <-- NUEVO
     nombres: "Cargando...",
     apellidos: "",
     rut: "",
@@ -37,7 +38,7 @@ export default function CredencialPage() {
           throw new Error("No hay sesión activa");
         }
 
-        // 2. Buscar el perfil en la base de datos
+        // 2. Buscar el perfil en la base de datos (Supabase trae todos los campos con '*')
         const { data, error } = await supabase
           .from('profiles')
           .select('*')
@@ -48,9 +49,10 @@ export default function CredencialPage() {
 
         if (data) {
           setSocio({
-            id: user.id, // Guardamos el UUID para el registro de asistencia
+            id: user.id, 
+            sindicato_id: data.sindicato_id, // <-- ¡CAPTURAMOS EL SINDICATO ID!
             nombres: data.full_name || 'Socio',
-            apellidos: '', // Simplificamos, ya que full_name suele contener ambos
+            apellidos: '', 
             rut: data.rut || '---',
             rol: (data.role === 'admin' || data.role === 'administrador') ? 'Directiva' : 'Socio Activo'
           });
@@ -77,10 +79,8 @@ export default function CredencialPage() {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (user) {
-        // Borrar el registro de la tabla 'profiles'
         await supabase.from('profiles').delete().eq('id', user.id);
 
-        // Ejecutar la función RPC para destruir la cuenta de Auth
         const { error: rpcError } = await supabase.rpc('delete_my_account');
         if (rpcError) {
           console.error("Error al borrar cuenta auth:", rpcError);
@@ -88,11 +88,8 @@ export default function CredencialPage() {
         }
       }
 
-      // Cerrar sesión y limpiar cookies locales
       await supabase.auth.signOut();
       document.cookie = "sb-sindicato-session=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-
-      // Expulsar a la página principal
       router.push("/");
     } catch (error) {
       console.error("Error al eliminar la cuenta:", error);
@@ -101,11 +98,13 @@ export default function CredencialPage() {
     }
   };
 
-  // Preparamos los datos estructurados que irán dentro del QR
+  // 🚨 AQUÍ ESTÁ EL TRUCO MULTI-TENANT 🚨
+  // Inyectamos el sindicato_id en el payload del QR para que el escáner lo valide
   const qrData = JSON.stringify({
     socio_id: socio.id,
     rut: socio.rut,
-    timestamp: Date.now() // Añade seguridad contra "pantallazos" antiguos
+    sindicato_id: socio.sindicato_id, // <-- EL SELLO DE SEGURIDAD
+    timestamp: Date.now() 
   });
 
   if (!isMounted) return null;
@@ -163,7 +162,7 @@ export default function CredencialPage() {
 
             {/* Código QR Real de Validación */}
             <div className="bg-white p-3 rounded-2xl border-2 border-slate-100 w-fit mx-auto mb-4 shadow-inner">
-              {socio.rut && socio.rut !== '---' ? (
+              {socio.rut && socio.rut !== '---' && socio.sindicato_id ? (
                 <QRCodeCanvas 
                   value={qrData} 
                   size={150} 
@@ -171,8 +170,8 @@ export default function CredencialPage() {
                   includeMargin={true}
                 />
               ) : (
-                <div className="w-[150px] h-[150px] flex items-center justify-center bg-slate-100 text-slate-400 text-xs">
-                  Cargando QR...
+                <div className="w-[150px] h-[150px] flex items-center justify-center bg-slate-100 text-slate-400 text-xs text-center px-4">
+                  Cargando datos seguros...
                 </div>
               )}
             </div>
